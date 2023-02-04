@@ -128,6 +128,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         let raw_index = self.read_u32()?;
 
         let raw_data = match raw_index {
+            0x0000_0000 => RawDataIndex::MatchPrevious,
             0xFFFF_FFFF => RawDataIndex::None,
             0x69120000..=0x6912FFFF => todo!(), // daqmx 1
             0x69130000..=0x6913FFFF => todo!(), //daqmx 2
@@ -290,6 +291,45 @@ mod tests {
                     number_of_values: 2,
                     total_size_bytes: None,
                 }),
+            },
+        ];
+
+        assert_eq!(objects, expected);
+    }
+
+    #[test]
+    fn test_properties_raw_data_matches() {
+        //example from NI "TDMS internal file format"
+        let test_buffer = [
+            0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2F, 0x27, 0x47, 0x72, 0x6F, 0x75,
+            0x70, 0x27, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
+            0x70, 0x72, 0x6F, 0x70, 0x20, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x76, 0x61,
+            0x6C, 0x75, 0x65, 0x03, 0x00, 0x00, 0x00, 0x6E, 0x75, 0x6D, 0x03, 0x00, 0x00, 0x00,
+            0x0A, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, 0x2F, 0x27, 0x47, 0x72, 0x6F, 0x75,
+            0x70, 0x27, 0x2F, 0x27, 0x43, 0x68, 0x61, 0x6E, 0x6E, 0x65, 0x6C, 0x31, 0x27, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let mut cursor = Cursor::new(test_buffer);
+        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
+        let objects = reader.read_meta_data().unwrap();
+
+        let expected = vec![
+            ObjectMetaData {
+                path: String::from("/'Group'"),
+                properties: vec![
+                    (
+                        String::from("prop"),
+                        PropertyValue::String(String::from("value")),
+                    ),
+                    (String::from("num"), PropertyValue::I32(10)),
+                ],
+                raw_data_index: RawDataIndex::None,
+            },
+            ObjectMetaData {
+                path: String::from("/'Group'/'Channel1'"),
+                properties: vec![],
+                raw_data_index: RawDataIndex::MatchPrevious,
             },
         ];
 

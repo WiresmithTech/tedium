@@ -139,6 +139,7 @@ pub struct ObjectMetaData {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RawDataIndex {
     None,
+    MatchPrevious,
     RawData(RawDataMeta),
 }
 
