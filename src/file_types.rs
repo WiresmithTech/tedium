@@ -6,11 +6,9 @@
 
 use num_derive::FromPrimitive;
 
-use crate::error::TdmsError;
-
 /// The DataTypeRaw enum's values match the binary representation of that
 /// type in tdms files.
-#[derive(Clone, Copy, Debug, FromPrimitive)]
+#[derive(Clone, Copy, Debug, FromPrimitive, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DataTypeRaw {
     Void = 0,
@@ -60,7 +58,7 @@ impl fmt::Display for TimeStamp {
 */
 
 /// A wrapper type for data types found in tdms files
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PropertyValue {
     Void(()),
     Boolean(bool),
@@ -83,4 +81,90 @@ pub enum PropertyValue {
     // ComplexSingle(??)
     // CompledDouble(??)
     //TimeStamp(TimeStamp),
+}
+
+/// An extracted form of a segment table of contents.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ToC {
+    pub contains_meta_data: bool,
+    pub contains_raw_data: bool,
+    pub contains_daqmx_raw_data: bool,
+    pub data_is_interleaved: bool,
+    pub big_endian: bool,
+    pub contains_new_object_list: bool,
+}
+
+fn mask_bit_set(value: u32, bit: u8) -> bool {
+    let mask = 1u32 << bit;
+    let masked = value & mask;
+    masked != 0
+}
+
+impl ToC {
+    pub fn from_u32(value: u32) -> Self {
+        ToC {
+            contains_meta_data: mask_bit_set(value, 1),
+            contains_raw_data: mask_bit_set(value, 3),
+            contains_daqmx_raw_data: mask_bit_set(value, 7),
+            data_is_interleaved: mask_bit_set(value, 5),
+            big_endian: mask_bit_set(value, 6),
+            contains_new_object_list: mask_bit_set(value, 2),
+        }
+    }
+}
+
+/// Contains the data from the TDMS segment header.
+#[derive(Debug, PartialEq, Clone)]
+pub struct SegmentMetaData {
+    pub toc: ToC,
+    /// The total length of the segment including data but minus the lead in.
+    /// Can be used to jump to the next segment in the file.
+    /// Can be all 0xFF for last segment of file if it crashes during a write.
+    pub next_segment_offset: u64,
+    /// The full length of the meta data (exlcuding lead in?)
+    pub raw_data_offset: u64,
+    pub objects: Vec<ObjectMetaData>,
+}
+
+/// Contains all data from an object entry in a segment header.
+#[derive(Debug, PartialEq, Clone)]
+pub struct ObjectMetaData {
+    pub path: String,
+    pub properties: Vec<(String, PropertyValue)>,
+    //now some data
+    //unclear if this may be present for daqmx
+    pub raw_data_index: RawDataIndex,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum RawDataIndex {
+    None,
+    RawData(RawDataMeta),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct RawDataMeta {
+    pub data_type: DataTypeRaw,
+    pub number_of_values: u64,
+    /// Only if strings
+    pub total_size_bytes: Option<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ToC;
+
+    #[test]
+    fn test_toc_example_from_ni() {
+        let toc_int = 0x0Eu32;
+        let toc = ToC::from_u32(toc_int);
+        println!("{toc:?}");
+
+        assert_eq!(toc.contains_meta_data, true);
+        assert_eq!(toc.contains_raw_data, true);
+        assert_eq!(toc.contains_daqmx_raw_data, false);
+        assert_eq!(toc.data_is_interleaved, false);
+        assert_eq!(toc.big_endian, false);
+        assert_eq!(toc.contains_new_object_list, true);
+    }
 }
