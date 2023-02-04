@@ -1,6 +1,8 @@
 mod error;
 mod file_types;
-mod reader;
+mod metadata_reader;
+mod raw_data;
+mod registry;
 
 use std::{
     fs::File,
@@ -15,7 +17,7 @@ impl TdmsReader {
         let mut file = File::open(path).unwrap();
 
         loop {
-            let segment = reader::read_segment(&mut file).unwrap();
+            let segment = metadata_reader::read_segment(&mut file).unwrap();
             println!("{segment:?}");
             let raw_data_size = segment.next_segment_offset - segment.raw_data_offset;
             println!("raw data size: {raw_data_size}");

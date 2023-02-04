@@ -114,6 +114,16 @@ impl ToC {
 }
 
 /// Contains the data from the TDMS segment header.
+///
+/// The offsets can be used to jump around the three elements that could be in the segment.
+///
+/// |----------------------------------------------------
+/// | lead in: 28 bytes
+/// |----------------------------------------------------
+/// | metadata: size = raw_data_offset |
+/// |--------------------------------- | raw data offset
+/// | raw data                         |
+/// |--------------------------------- |-----------------
 #[derive(Debug, PartialEq, Clone)]
 pub struct SegmentMetaData {
     pub toc: ToC,

@@ -106,12 +106,6 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         Ok(prop_type)
     }
 
-    fn read_property_from_type(&mut self, prop_type: DataTypeRaw) -> Result<PropertyValue> {
-        match prop_type {
-            _ => Err(TdmsReaderError::UnsupportedType(prop_type)),
-        }
-    }
-
     fn read_meta_data(&mut self) -> Result<Vec<ObjectMetaData>> {
         let object_count = self.read_u32()?;
         let mut objects = Vec::with_capacity(object_count as usize);
@@ -170,6 +164,8 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         let _version = self.read_u32()?;
         let next_segment_offset = self.read_u64()?;
         let raw_data_offset = self.read_u64()?;
+
+        //todo handle no meta data mode.
         let objects = self.read_meta_data()?;
 
         Ok(SegmentMetaData {
