@@ -12,11 +12,14 @@ use std::{
 
 use index::FileScanner;
 
-pub struct TdmsReader {}
+pub struct TdmsReader {
+    index: index::Index,
+}
 
 impl TdmsReader {
     pub fn load(path: &Path) {
         let mut file = File::open(path).unwrap();
+        let file_size = file.metadata().unwrap().len();
         let mut scanner = FileScanner::new();
 
         loop {
@@ -26,7 +29,11 @@ impl TdmsReader {
             if let Err(_) = file.seek(SeekFrom::Current(raw_data_size as i64)) {
                 break;
             }
+            if file_size == file.stream_position().unwrap() {
+                break;
+            }
         }
+        let index = scanner.into_index();
     }
 }
 

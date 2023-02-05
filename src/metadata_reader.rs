@@ -29,9 +29,7 @@ type Result<T> = std::result::Result<T, TdmsReaderError>;
 pub fn read_segment(reader: &mut impl ReadBytesExt) -> Result<SegmentMetaData> {
     let mut tag = [0u8; 4];
     reader.read_exact(&mut tag)?;
-    unsafe {
-        println!("{}", std::str::from_utf8_unchecked(&tag));
-    }
+
     if tag != [0x54, 0x44, 0x53, 0x6D] {
         return Err(TdmsReaderError::HeaderPatternNotMatched);
     }

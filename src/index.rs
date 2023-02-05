@@ -19,11 +19,27 @@ struct DataLocation {
     channel_index: usize,
 }
 
+///Represents actual data formats that can store data.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum DataFormat {
+    RawData(RawDataMeta),
+}
+
+impl DataFormat {
+    fn from_index(index: &RawDataIndex) -> Option<Self> {
+        match index {
+            RawDataIndex::RawData(raw_meta) => Some(DataFormat::RawData(raw_meta.clone())),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 struct ObjectData {
     path: String,
     properties: HashMap<String, PropertyValue>,
     data_locations: Vec<DataLocation>,
+    latest_data_format: Option<DataFormat>,
 }
 
 impl ObjectData {
@@ -33,6 +49,7 @@ impl ObjectData {
             path: meta.path.clone(),
             properties: HashMap::new(),
             data_locations: vec![],
+            latest_data_format: None,
         };
 
         new.update(meta);
@@ -42,6 +59,9 @@ impl ObjectData {
     fn update(&mut self, other: &ObjectMetaData) {
         for (name, value) in other.properties.iter() {
             self.properties.insert(name.clone(), value.clone());
+        }
+        if let Some(format) = DataFormat::from_index(&other.raw_data_index) {
+            self.latest_data_format = Some(format)
         }
     }
 
@@ -57,19 +77,20 @@ impl ObjectData {
 #[derive(Debug, Clone)]
 struct ActiveObject {
     path: String,
-    raw_data_meta: RawDataMeta,
 }
 
 impl ActiveObject {
-    fn update(&mut self, meta: &ObjectMetaData) {
-        match &meta.raw_data_index {
-            RawDataIndex::RawData(raw_meta) => self.raw_data_meta = raw_meta.clone(),
-            RawDataIndex::MatchPrevious => {} //noop
-            _ => panic!("Unsupported raw data index."),
-        }
-    }
+    fn update(&mut self, meta: &ObjectMetaData) {}
 
-    fn get_object_data<'b, 'c>(&'b self, registry: &'c mut ObjectRegistry) -> &'c mut ObjectData {
+    fn get_object_data<'b, 'c>(&'b self, registry: &'c ObjectRegistry) -> &'c ObjectData {
+        registry
+            .get(&self.path)
+            .expect("Should always have a registered version of active object")
+    }
+    fn get_object_data_mut<'b, 'c>(
+        &'b self,
+        registry: &'c mut ObjectRegistry,
+    ) -> &'c mut ObjectData {
         registry
             .get_mut(&self.path)
             .expect("Should always have a registered version of active object")
@@ -124,7 +145,15 @@ impl FileScanner {
     fn get_active_raw_data_meta(&self) -> Vec<RawDataMeta> {
         self.active_objects
             .iter()
-            .map(|ao| ao.raw_data_meta.clone())
+            .map(|ao| {
+                ao.get_object_data(&self.object_registry)
+                    .latest_data_format
+                    .clone()
+                    .expect("Getting data format from object that never had one")
+            })
+            .map(|format| match format {
+                DataFormat::RawData(raw) => raw,
+            })
             .collect()
     }
 
@@ -138,7 +167,7 @@ impl FileScanner {
                 channel_index,
             };
             active_object
-                .get_object_data(&mut self.object_registry)
+                .get_object_data_mut(&mut self.object_registry)
                 .add_data_location(location);
         }
     }
@@ -163,17 +192,12 @@ impl FileScanner {
             Some(active_object) => {
                 active_object.update(object);
                 active_object
-                    .get_object_data(&mut self.object_registry)
+                    .get_object_data_mut(&mut self.object_registry)
                     .update(object);
             }
             None => {
-                let raw_meta = match &object.raw_data_index {
-                    RawDataIndex::RawData(meta) => meta.clone(),
-                    _ => panic!("Unexepected raw type: {:?}", &object.raw_data_index),
-                };
                 self.active_objects.push(ActiveObject {
                     path: object.path.clone(),
-                    raw_data_meta: raw_meta,
                 });
                 self.update_meta_object(object);
             }
@@ -199,7 +223,7 @@ impl FileScanner {
         }
     }
 
-    fn into_index(mut self) -> Index {
+    pub fn into_index(mut self) -> Index {
         self.deactivate_all_objects();
 
         Index {
@@ -209,8 +233,8 @@ impl FileScanner {
     }
 }
 
-struct Index {
-    objects: HashMap<String, ObjectData>,
+pub struct Index {
+    objects: ObjectRegistry,
     data_blocks: Vec<DataBlock>,
 }
 
@@ -374,6 +398,164 @@ mod tests {
         };
 
         let block = registry.get_data_block(0).unwrap();
+        assert_eq!(block, &expected_data_block);
+    }
+
+    #[test]
+    fn correctly_generates_the_data_block_same_as_previous() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xA),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![],
+                    raw_data_index: RawDataIndex::MatchPrevious,
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![],
+                    raw_data_index: RawDataIndex::MatchPrevious,
+                },
+            ],
+        };
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let expected_data_block = DataBlock {
+            start: 576,
+            length: 480,
+            layout: DataLayout::Contigious,
+            channels: vec![
+                RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                },
+                RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                },
+            ],
+            byte_order: Endianess::Little,
+        };
+
+        let block = registry.get_data_block(1).unwrap();
+        assert_eq!(block, &expected_data_block);
+    }
+
+    #[test]
+    fn correctly_generates_the_data_block_same_as_previous_new_list() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![],
+                    raw_data_index: RawDataIndex::MatchPrevious,
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![],
+                    raw_data_index: RawDataIndex::MatchPrevious,
+                },
+            ],
+        };
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let expected_data_block = DataBlock {
+            start: 576,
+            length: 480,
+            layout: DataLayout::Contigious,
+            channels: vec![
+                RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                },
+                RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                },
+            ],
+            byte_order: Endianess::Little,
+        };
+
+        let block = registry.get_data_block(1).unwrap();
         assert_eq!(block, &expected_data_block);
     }
 
