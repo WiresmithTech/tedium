@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 
-use crate::file_types::{ObjectMetaData, PropertyValue, RawDataMeta, SegmentMetaData};
+use crate::file_types::{
+    ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, SegmentMetaData,
+};
 use crate::raw_data::DataBlock;
 
 /// A store for a given channel point to the data block with its data and the index within that.
@@ -33,13 +35,41 @@ impl ObjectData {
             data_locations: vec![],
         }
     }
-    fn update(&mut self, other: Self) {}
+    fn update(&mut self, other: &ObjectMetaData) {
+        // This is not good enough. we need to replace.
+        //todo
+        self.properties.extend_from_slice(&other.properties);
+    }
+
+    fn add_data_location(&mut self, location: DataLocation) {
+        self.data_locations.push(location);
+    }
 }
 
+#[derive(Debug, Clone)]
+struct ActiveObject {
+    path: String,
+    raw_data_meta: RawDataMeta,
+}
+
+impl ActiveObject {
+    fn update(&mut self, meta: &ObjectMetaData) {
+        todo!()
+    }
+
+    fn get_object_data<'b, 'c>(&'b self, registry: &'c mut ObjectRegistry) -> &'c mut ObjectData {
+        registry
+            .get_mut(&self.path)
+            .expect("Should always have a registered version of active object")
+    }
+}
+
+type ObjectRegistry = HashMap<String, ObjectData>;
+
 #[derive(Default, Debug, Clone)]
-struct FileScanner {
-    active_objects: Vec<ObjectData>,
-    inactive_objects: HashMap<String, ObjectData>,
+pub struct FileScanner {
+    active_objects: Vec<ActiveObject>,
+    object_registry: ObjectRegistry,
     data_blocks: Vec<DataBlock>,
     next_segment_start: u64,
 }
@@ -63,8 +93,10 @@ impl FileScanner {
         segment
             .objects
             .iter()
-            .map(ObjectData::from_metadata)
-            .for_each(|obj| self.update_or_activate_object(obj));
+            .for_each(|obj| match obj.raw_data_index {
+                RawDataIndex::None => self.update_meta_object(obj),
+                _ => self.update_or_activate_data_object(obj),
+            });
 
         let data_block = DataBlock::from_segment(
             &segment,
@@ -78,54 +110,97 @@ impl FileScanner {
     }
 
     fn get_active_raw_data_meta(&self) -> Vec<RawDataMeta> {
-        todo!()
+        self.active_objects
+            .iter()
+            .map(|ao| ao.raw_data_meta.clone())
+            .collect()
     }
 
     fn insert_data_block(&mut self, block: DataBlock) {
-        //put in datablock array and add location to all active channels.
+        let data_index = self.data_blocks.len();
+        self.data_blocks.push(block);
+
+        for (channel_index, active_object) in self.active_objects.iter_mut().enumerate() {
+            let location = DataLocation {
+                data_block: data_index,
+                channel_index,
+            };
+            active_object
+                .get_object_data(&mut self.object_registry)
+                .add_data_location(location);
+        }
     }
 
     /// Consumes the object and makes it inactive.
     ///
     /// Panics if the object was already listed as inactive.
     fn deactivate_all_objects(&mut self) {
-        //drain into another vector to avoid mutability issues.
-        let active_objects = self.active_objects.drain(..).collect::<Vec<ObjectData>>();
-        for object in active_objects.into_iter() {
-            let old_value = self.inactive_objects.insert(object.path.clone(), object);
-            assert!(matches!(old_value, None));
-        }
+        self.active_objects.clear();
     }
 
-    /// Activate Object
+    /// Activate Data Object
     ///
     /// Adds the object by path to the active objects. Creates it if it doesn't exist.
-    fn update_or_activate_object(&mut self, object: ObjectData) {
-        match self.inactive_objects.remove(&object.path) {
-            None => self.active_objects.push(object),
-            Some(mut old_object) => {
-                old_object.update(object);
-                self.active_objects.push(old_object);
+    fn update_or_activate_data_object(&mut self, object: &ObjectMetaData) {
+        let matching_active = self
+            .active_objects
+            .iter_mut()
+            .find(|active_object| active_object.path == object.path);
+
+        match matching_active {
+            Some(active_object) => active_object.update(object),
+            None => {
+                let object_data = ObjectData::from_metadata(object);
+                let raw_meta = match &object.raw_data_index {
+                    RawDataIndex::RawData(meta) => meta.clone(),
+                    _ => panic!("Unexepected raw type"),
+                };
+                self.active_objects.push(ActiveObject {
+                    path: object_data.path.clone(),
+                    raw_data_meta: raw_meta,
+                });
+
+                self.object_registry
+                    .insert(object.path.clone(), object_data);
             }
         }
     }
 
-    fn into_registry(mut self) -> Registry {
+    /// Update Meta Only Object
+    ///
+    /// Update an object which contains no data.
+    fn update_meta_object(&mut self, object: &ObjectMetaData) {
+        match self.object_registry.get_mut(&object.path) {
+            Some(found_object) => found_object.update(object),
+            None => {
+                let object_data = ObjectData::from_metadata(object);
+                let old = self
+                    .object_registry
+                    .insert(object_data.path.clone(), object_data);
+                assert!(
+                    matches!(old, None),
+                    "Should not be possible to be replacing an existing object."
+                );
+            }
+        }
+    }
+
+    fn into_registry(mut self) -> Index {
         self.deactivate_all_objects();
 
-        Registry {
-            objects: self.inactive_objects,
+        Index {
+            objects: self.object_registry,
             data_blocks: self.data_blocks,
         }
     }
 }
 
-struct Registry {
+struct Index {
     objects: HashMap<String, ObjectData>,
     data_blocks: Vec<DataBlock>,
 }
 
-impl Registry {
+impl Index {
     fn get_object_properties(&self, path: &str) -> Option<&[(String, PropertyValue)]> {
         self.objects.get(path).map(|object| &object.properties[..])
     }

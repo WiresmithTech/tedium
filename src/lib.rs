@@ -1,8 +1,8 @@
 mod error;
 mod file_types;
+mod index;
 mod metadata_reader;
 mod raw_data;
-mod registry;
 
 use std::{
     fs::File,
@@ -22,6 +22,8 @@ impl TdmsReader {
             let raw_data_size = segment.next_segment_offset - segment.raw_data_offset;
             println!("raw data size: {raw_data_size}");
             file.seek(SeekFrom::Current(raw_data_size as i64)).unwrap();
+
+            index::FileScanner::new();
         }
     }
 }
