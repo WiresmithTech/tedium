@@ -62,7 +62,11 @@ struct ActiveObject {
 
 impl ActiveObject {
     fn update(&mut self, meta: &ObjectMetaData) {
-        todo!()
+        match &meta.raw_data_index {
+            RawDataIndex::RawData(raw_meta) => self.raw_data_meta = raw_meta.clone(),
+            RawDataIndex::MatchPrevious => {} //noop
+            _ => panic!("Unsupported raw data index."),
+        }
     }
 
     fn get_object_data<'b, 'c>(&'b self, registry: &'c mut ObjectRegistry) -> &'c mut ObjectData {
@@ -156,20 +160,22 @@ impl FileScanner {
             .find(|active_object| active_object.path == object.path);
 
         match matching_active {
-            Some(active_object) => active_object.update(object),
+            Some(active_object) => {
+                active_object.update(object);
+                active_object
+                    .get_object_data(&mut self.object_registry)
+                    .update(object);
+            }
             None => {
-                let object_data = ObjectData::from_metadata(object);
                 let raw_meta = match &object.raw_data_index {
                     RawDataIndex::RawData(meta) => meta.clone(),
-                    _ => panic!("Unexepected raw type"),
+                    _ => panic!("Unexepected raw type: {:?}", &object.raw_data_index),
                 };
                 self.active_objects.push(ActiveObject {
-                    path: object_data.path.clone(),
+                    path: object.path.clone(),
                     raw_data_meta: raw_meta,
                 });
-
-                self.object_registry
-                    .insert(object.path.clone(), object_data);
+                self.update_meta_object(object);
             }
         }
     }
@@ -458,6 +464,542 @@ mod tests {
         assert_eq!(
             ch1_properties,
             &[(&"Prop1".to_string(), &PropertyValue::I32(-2))]
+        );
+    }
+
+    /// This tests the second optimisation on the NI article.
+    #[test]
+    fn can_update_properties_with_no_changes_to_data_layout() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xA),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![ObjectMetaData {
+                path: "group/ch1".to_string(),
+                properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
+                raw_data_index: RawDataIndex::MatchPrevious,
+            }],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let group_properties = registry.get_object_properties("group").unwrap();
+        assert_eq!(
+            group_properties,
+            &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
+        );
+        let ch1_properties = registry.get_object_properties("group/ch1").unwrap();
+        assert_eq!(
+            ch1_properties,
+            &[(&String::from("Prop1"), &PropertyValue::I32(-2))]
+        );
+        let ch2_properties = registry.get_object_properties("group/ch2").unwrap();
+        assert_eq!(
+            ch2_properties,
+            &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
+        );
+
+        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        assert_eq!(
+            ch1_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 0
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 0
+                }
+            ]
+        );
+        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        assert_eq!(
+            ch2_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 1
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 1
+                }
+            ]
+        );
+    }
+
+    /// This tests that the previous active list is maintained with no objects updated.
+    #[test]
+    fn can_keep_data_with_no_objects_listed() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xA),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        assert_eq!(
+            ch1_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 0
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 0
+                }
+            ]
+        );
+        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        assert_eq!(
+            ch2_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 1
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 1
+                }
+            ]
+        );
+    }
+
+    /// This tests that the previous active list is maintained with no metadata updated.
+    #[test]
+    fn can_keep_data_with_no_metadata_in_toc() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0x8),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        assert_eq!(
+            ch1_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 0
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 0
+                }
+            ]
+        );
+        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        assert_eq!(
+            ch2_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 1
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 1
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn can_add_channel_to_active_list() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xA),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![ObjectMetaData {
+                path: "group/ch3".to_string(),
+                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                }),
+            }],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let ch3_properties = registry.get_object_properties("group/ch3").unwrap();
+        assert_eq!(
+            ch3_properties,
+            &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
+        );
+
+        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        assert_eq!(
+            ch1_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 0
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 0
+                }
+            ]
+        );
+        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        assert_eq!(
+            ch2_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 1
+                },
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 1
+                }
+            ]
+        );
+        let ch3_data = registry.get_channel_data_positions("group/ch3").unwrap();
+        assert_eq!(
+            ch3_data,
+            &[DataLocation {
+                data_block: 1,
+                channel_index: 2
+            }]
+        );
+    }
+
+    #[test]
+    fn can_replace_the_existing_list() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![ObjectMetaData {
+                path: "group/ch3".to_string(),
+                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                }),
+            }],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+
+        let registry = scanner.into_index();
+
+        let ch3_properties = registry.get_object_properties("group/ch3").unwrap();
+        assert_eq!(
+            ch3_properties,
+            &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
+        );
+
+        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        assert_eq!(
+            ch1_data,
+            &[DataLocation {
+                data_block: 0,
+                channel_index: 0
+            },]
+        );
+        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        assert_eq!(
+            ch2_data,
+            &[DataLocation {
+                data_block: 0,
+                channel_index: 1
+            },]
+        );
+        let ch3_data = registry.get_channel_data_positions("group/ch3").unwrap();
+        assert_eq!(
+            ch3_data,
+            &[DataLocation {
+                data_block: 1,
+                channel_index: 0
+            }]
+        );
+    }
+
+    #[test]
+    fn can_re_add_channel_to_active_list() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![ObjectMetaData {
+                path: "group/ch3".to_string(),
+                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                }),
+            }],
+        };
+        let segment3 = SegmentMetaData {
+            toc: ToC::from_u32(0xA),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![ObjectMetaData {
+                path: "group/ch1".to_string(),
+                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                    data_type: DataTypeRaw::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                }),
+            }],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+        scanner.add_segment_to_index(segment3);
+
+        let registry = scanner.into_index();
+
+        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        assert_eq!(
+            ch1_data,
+            &[
+                DataLocation {
+                    data_block: 0,
+                    channel_index: 0
+                },
+                DataLocation {
+                    data_block: 2,
+                    channel_index: 1
+                }
+            ]
+        );
+        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        assert_eq!(
+            ch2_data,
+            &[DataLocation {
+                data_block: 0,
+                channel_index: 1
+            },]
+        );
+        let ch3_data = registry.get_channel_data_positions("group/ch3").unwrap();
+        assert_eq!(
+            ch3_data,
+            &[
+                DataLocation {
+                    data_block: 1,
+                    channel_index: 0
+                },
+                DataLocation {
+                    data_block: 2,
+                    channel_index: 0
+                }
+            ]
         );
     }
 }

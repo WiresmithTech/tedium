@@ -10,20 +10,22 @@ use std::{
     path::Path,
 };
 
+use index::FileScanner;
+
 pub struct TdmsReader {}
 
 impl TdmsReader {
     pub fn load(path: &Path) {
         let mut file = File::open(path).unwrap();
+        let mut scanner = FileScanner::new();
 
         loop {
             let segment = metadata_reader::read_segment(&mut file).unwrap();
-            println!("{segment:?}");
             let raw_data_size = segment.next_segment_offset - segment.raw_data_offset;
-            println!("raw data size: {raw_data_size}");
-            file.seek(SeekFrom::Current(raw_data_size as i64)).unwrap();
-
-            index::FileScanner::new();
+            scanner.add_segment_to_index(segment);
+            if let Err(_) = file.seek(SeekFrom::Current(raw_data_size as i64)) {
+                break;
+            }
         }
     }
 }
