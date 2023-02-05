@@ -1,5 +1,12 @@
 //! Holds the capabilites for accessing the raw data blocks.
 
+use std::{
+    io::{Seek, SeekFrom},
+    marker::PhantomData,
+};
+
+use byteorder::{ByteOrder, ReadBytesExt};
+
 use crate::file_types::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -57,8 +64,70 @@ impl DataBlock {
     }
 }
 
+struct BlockReader<'a, R: ReadBytesExt + Seek, O: ByteOrder> {
+    step_bytes: i64,
+    samples: u64,
+    samples_read: u64,
+    reader: &'a mut R,
+    _order: PhantomData<O>,
+}
+
+impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> BlockReader<'a, R, O> {
+    fn new(
+        start_bytes: u64,
+        step_bytes: u64,
+        samples: u64,
+        reader: &'a mut R,
+    ) -> Result<Self, std::io::Error> {
+        reader.seek(SeekFrom::Start(start_bytes))?;
+        Ok(Self {
+            step_bytes: step_bytes as i64,
+            samples,
+            samples_read: 0,
+            reader,
+            _order: PhantomData,
+        })
+    }
+
+    fn read_next(&mut self) -> Result<f64, std::io::Error> {
+        if self.samples_read != 0 && self.step_bytes != 0 {
+            self.reader.seek(SeekFrom::Current(self.step_bytes))?;
+        }
+        let sample = self.reader.read_f64::<O>()?;
+        self.samples_read += 1;
+        Ok(sample)
+    }
+
+    fn read(&mut self, output: &mut [f64]) -> Result<(), std::io::Error> {
+        for sample in output.iter_mut() {
+            *sample = self.read_next()?
+        }
+        Ok(())
+    }
+
+    fn read_vec(&mut self) -> Result<Vec<f64>, std::io::Error> {
+        let mut values = vec![0.0; self.samples as usize];
+        self.read(&mut values[..])?;
+        Ok(values)
+    }
+}
+
+/*
+impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> std::iter::Iterator for BlockReader<'a, R, O> {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.read_next()
+    }
+}
+*/
+
 #[cfg(test)]
 mod test {
+    use std::io::Cursor;
+
+    use byteorder::{BigEndian, WriteBytesExt};
+
     use crate::file_types::{DataTypeRaw, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
 
     use super::*;
@@ -163,5 +232,51 @@ mod test {
 
         assert_eq!(big_block.byte_order, Endianess::Big);
         assert_eq!(little_block.byte_order, Endianess::Little);
+    }
+
+    fn create_test_buffer() -> Cursor<Vec<u8>> {
+        let mut buffer = Vec::with_capacity(1024);
+        let mut cursor = Cursor::new(buffer);
+        for index in 0..100 {
+            let value = index as f64;
+            cursor.write_f64::<BigEndian>(value).unwrap();
+        }
+        cursor
+    }
+
+    #[test]
+    fn read_data_contigous_no_offset() {
+        let mut buffer = create_test_buffer();
+
+        let mut reader = BlockReader::<_, BigEndian>::new(0, 0, 3, &mut buffer).unwrap();
+        let output: Vec<f64> = reader.read_vec().unwrap();
+        assert_eq!(output, vec![0.0, 1.0, 2.0]);
+    }
+
+    #[test]
+    fn read_data_contigous_offset() {
+        let mut buffer = create_test_buffer();
+
+        let mut reader = BlockReader::<_, BigEndian>::new(16, 0, 3, &mut buffer).unwrap();
+        let output: Vec<f64> = reader.read_vec().unwrap();
+        assert_eq!(output, vec![2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn read_data_interleaved_no_offset() {
+        let mut buffer = create_test_buffer();
+
+        let mut reader = BlockReader::<_, BigEndian>::new(0, 8, 3, &mut buffer).unwrap();
+        let output: Vec<f64> = reader.read_vec().unwrap();
+        assert_eq!(output, vec![0.0, 2.0, 4.0]);
+    }
+
+    #[test]
+    fn read_data_interleaved_offset() {
+        let mut buffer = create_test_buffer();
+
+        let mut reader = BlockReader::<_, BigEndian>::new(16, 8, 3, &mut buffer).unwrap();
+        let output: Vec<f64> = reader.read_vec().unwrap();
+        assert_eq!(output, vec![2.0, 4.0, 6.0]);
     }
 }
