@@ -104,11 +104,12 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         Ok(prop_type)
     }
 
+    /// Read the metadata section of the segment.
     fn read_meta_data(&mut self) -> Result<Vec<ObjectMetaData>> {
         let object_count = self.read_u32()?;
         let mut objects = Vec::with_capacity(object_count as usize);
 
-        for object in 0..object_count {
+        for _ in 0..object_count {
             objects.push(self.read_object_meta()?);
         }
 
@@ -124,7 +125,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
             0xFFFF_FFFF => RawDataIndex::None,
             0x69120000..=0x6912FFFF => todo!(), // daqmx 1
             0x69130000..=0x6913FFFF => todo!(), //daqmx 2
-            _ => self.read_raw_data_meta(raw_index)?,
+            _ => self.read_raw_data_meta()?,
         };
 
         let property_count = self.read_u32()?;
@@ -144,7 +145,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         })
     }
 
-    fn read_raw_data_meta(&mut self, first_value: u32) -> Result<RawDataIndex> {
+    fn read_raw_data_meta(&mut self) -> Result<RawDataIndex> {
         let data_type = self.read_raw_data_type()?;
         let _array_dims = self.read_u32()?; //always 1.
         let number_of_values = self.read_u64()?;

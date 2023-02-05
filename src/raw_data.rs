@@ -55,10 +55,6 @@ impl DataBlock {
             byte_order,
         }
     }
-
-    pub fn end(&self) -> u64 {
-        self.start + self.length
-    }
 }
 
 #[cfg(test)]

@@ -10,6 +10,8 @@ use std::{
     path::Path,
 };
 
+use error::TdmsError;
+use file_types::PropertyValue;
 use index::FileScanner;
 
 pub struct TdmsReader {
@@ -17,7 +19,7 @@ pub struct TdmsReader {
 }
 
 impl TdmsReader {
-    pub fn load(path: &Path) {
+    pub fn load(path: &Path) -> Self {
         let mut file = File::open(path).unwrap();
         let file_size = file.metadata().unwrap().len();
         let mut scanner = FileScanner::new();
@@ -34,6 +36,20 @@ impl TdmsReader {
             }
         }
         let index = scanner.into_index();
+
+        Self { index }
+    }
+
+    pub fn read_property(
+        &self,
+        object_path: &str,
+        property: &str,
+    ) -> Result<Option<&PropertyValue>, TdmsError> {
+        self.index.get_object_property(object_path, property)
+    }
+
+    pub fn read_all_properties(&self, object_path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
+        self.index.get_object_properties(object_path)
     }
 }
 

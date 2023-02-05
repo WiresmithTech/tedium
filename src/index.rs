@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use crate::error::TdmsError;
 use crate::file_types::{
     ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, SegmentMetaData,
 };
@@ -12,7 +13,7 @@ use crate::raw_data::DataBlock;
 
 /// A store for a given channel point to the data block with its data and the index within that.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DataLocation {
+pub struct DataLocation {
     /// The index of the data block with the data in.
     data_block: usize,
     /// The channel index in that block.
@@ -80,7 +81,7 @@ struct ActiveObject {
 }
 
 impl ActiveObject {
-    fn update(&mut self, meta: &ObjectMetaData) {}
+    fn update(&mut self, _meta: &ObjectMetaData) {}
 
     fn get_object_data<'b, 'c>(&'b self, registry: &'c ObjectRegistry) -> &'c ObjectData {
         registry
@@ -239,19 +240,34 @@ pub struct Index {
 }
 
 impl Index {
-    fn get_object_properties(&self, path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
+    pub fn get_object_properties(&self, path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
         self.objects
             .get(path)
             .map(|object| object.get_all_properties())
     }
 
-    fn get_channel_data_positions(&self, path: &str) -> Option<&[DataLocation]> {
+    pub fn get_object_property(
+        &self,
+        path: &str,
+        property: &str,
+    ) -> Result<Option<&PropertyValue>, TdmsError> {
+        let property = self
+            .objects
+            .get(path)
+            .ok_or_else(|| TdmsError::MissingObject(path.to_string()))?
+            .properties
+            .get(property);
+
+        Ok(property)
+    }
+
+    pub fn get_channel_data_positions(&self, path: &str) -> Option<&[DataLocation]> {
         self.objects
             .get(path)
             .map(|object| &object.data_locations[..])
     }
 
-    fn get_data_block(&self, index: usize) -> Option<&DataBlock> {
+    pub fn get_data_block(&self, index: usize) -> Option<&DataBlock> {
         self.data_blocks.get(index)
     }
 }
