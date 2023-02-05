@@ -6,6 +6,9 @@
 
 use num_derive::FromPrimitive;
 
+///The fixed byte size of the lead in section.
+pub const LEAD_IN_BYTES: u64 = 28;
+
 /// The DataTypeRaw enum's values match the binary representation of that
 /// type in tdms files.
 #[derive(Clone, Copy, Debug, FromPrimitive, PartialEq, Eq)]
@@ -84,7 +87,7 @@ pub enum PropertyValue {
 }
 
 /// An extracted form of a segment table of contents.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct ToC {
     pub contains_meta_data: bool,
     pub contains_raw_data: bool,
@@ -121,10 +124,10 @@ impl ToC {
 /// | lead in: 28 bytes
 /// |----------------------------------------------------
 /// | metadata: size = raw_data_offset |
-/// |--------------------------------- | raw data offset
+/// |--------------------------------- | next segment offset
 /// | raw data                         |
 /// |--------------------------------- |-----------------
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct SegmentMetaData {
     pub toc: ToC,
     /// The total length of the segment including data but minus the lead in.
@@ -134,6 +137,12 @@ pub struct SegmentMetaData {
     /// The full length of the meta data (exlcuding lead in?)
     pub raw_data_offset: u64,
     pub objects: Vec<ObjectMetaData>,
+}
+
+impl SegmentMetaData {
+    pub fn total_size_bytes(&self) -> u64 {
+        LEAD_IN_BYTES + self.next_segment_offset
+    }
 }
 
 /// Contains all data from an object entry in a segment header.
@@ -163,7 +172,7 @@ pub struct RawDataMeta {
 
 #[cfg(test)]
 mod tests {
-    use super::ToC;
+    use super::{SegmentMetaData, ToC};
 
     #[test]
     fn test_toc_example_from_ni() {
@@ -177,5 +186,16 @@ mod tests {
         assert_eq!(toc.data_is_interleaved, false);
         assert_eq!(toc.big_endian, false);
         assert_eq!(toc.contains_new_object_list, true);
+    }
+
+    #[test]
+    fn test_segment_size_calc() {
+        let segment = SegmentMetaData {
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            ..Default::default()
+        };
+
+        assert_eq!(segment.total_size_bytes(), 528);
     }
 }

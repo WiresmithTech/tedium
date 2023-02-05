@@ -1,9 +1,6 @@
 //! Holds the capabilites for accessing the raw data blocks.
 
-use crate::file_types::{RawDataMeta, SegmentMetaData};
-
-///The fixed byte size of the lead in section.
-const LEAD_IN_BYTES: u64 = 28;
+use crate::file_types::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DataLayout {

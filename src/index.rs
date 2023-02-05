@@ -22,27 +22,35 @@ struct DataLocation {
 #[derive(Clone, PartialEq, Debug)]
 struct ObjectData {
     path: String,
-    properties: Vec<(String, PropertyValue)>,
+    properties: HashMap<String, PropertyValue>,
     data_locations: Vec<DataLocation>,
 }
 
 impl ObjectData {
     //todo: this can be more efficient
     fn from_metadata(meta: &ObjectMetaData) -> Self {
-        Self {
+        let mut new = Self {
             path: meta.path.clone(),
-            properties: meta.properties.clone(),
+            properties: HashMap::new(),
             data_locations: vec![],
-        }
+        };
+
+        new.update(meta);
+
+        new
     }
     fn update(&mut self, other: &ObjectMetaData) {
-        // This is not good enough. we need to replace.
-        //todo
-        self.properties.extend_from_slice(&other.properties);
+        for (name, value) in other.properties.iter() {
+            self.properties.insert(name.clone(), value.clone());
+        }
     }
 
     fn add_data_location(&mut self, location: DataLocation) {
         self.data_locations.push(location);
+    }
+
+    fn get_all_properties(&self) -> Vec<(&String, &PropertyValue)> {
+        self.properties.iter().collect()
     }
 }
 
@@ -79,7 +87,7 @@ impl FileScanner {
         Self::default()
     }
 
-    pub fn add_segment_to_registry(&mut self, segment: SegmentMetaData) {
+    pub fn add_segment_to_index(&mut self, segment: SegmentMetaData) {
         //Basic procedure.
         //1. If new object list is set, clear active objects.
         //2. Update the active object list - adding new objects or updating properties and data locations for existing objects.
@@ -87,8 +95,6 @@ impl FileScanner {
         if segment.toc.contains_new_object_list {
             self.deactivate_all_objects();
         }
-
-        //todo: can we re-order this to avoid building object data when not needed??
 
         segment
             .objects
@@ -98,15 +104,17 @@ impl FileScanner {
                 _ => self.update_or_activate_data_object(obj),
             });
 
-        let data_block = DataBlock::from_segment(
-            &segment,
-            self.next_segment_start,
-            self.get_active_raw_data_meta(),
-        );
+        if segment.toc.contains_raw_data {
+            let data_block = DataBlock::from_segment(
+                &segment,
+                self.next_segment_start,
+                self.get_active_raw_data_meta(),
+            );
 
-        self.next_segment_start = data_block.end();
+            self.insert_data_block(data_block);
+        }
 
-        self.insert_data_block(data_block);
+        self.next_segment_start += segment.total_size_bytes();
     }
 
     fn get_active_raw_data_meta(&self) -> Vec<RawDataMeta> {
@@ -185,7 +193,7 @@ impl FileScanner {
         }
     }
 
-    fn into_registry(mut self) -> Index {
+    fn into_index(mut self) -> Index {
         self.deactivate_all_objects();
 
         Index {
@@ -201,8 +209,10 @@ struct Index {
 }
 
 impl Index {
-    fn get_object_properties(&self, path: &str) -> Option<&[(String, PropertyValue)]> {
-        self.objects.get(path).map(|object| &object.properties[..])
+    fn get_object_properties(&self, path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
+        self.objects
+            .get(path)
+            .map(|object| object.get_all_properties())
     }
 
     fn get_channel_data_positions(&self, path: &str) -> Option<&[DataLocation]> {
@@ -262,24 +272,24 @@ mod tests {
         };
 
         let mut scanner = FileScanner::new();
-        scanner.add_segment_to_registry(segment);
+        scanner.add_segment_to_index(segment);
 
-        let registry = scanner.into_registry();
+        let registry = scanner.into_index();
 
         let group_properties = registry.get_object_properties("group").unwrap();
         assert_eq!(
             group_properties,
-            &[("Prop".to_string(), PropertyValue::I32(-51))]
+            &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
         let ch1_properties = registry.get_object_properties("group/ch1").unwrap();
         assert_eq!(
             ch1_properties,
-            &[("Prop1".to_string(), PropertyValue::I32(-1))]
+            &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
         );
         let ch2_properties = registry.get_object_properties("group/ch2").unwrap();
         assert_eq!(
             ch2_properties,
-            &[("Prop2".to_string(), PropertyValue::I32(-2))]
+            &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
         let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
@@ -334,9 +344,9 @@ mod tests {
         };
 
         let mut scanner = FileScanner::new();
-        scanner.add_segment_to_registry(segment);
+        scanner.add_segment_to_index(segment);
 
-        let registry = scanner.into_registry();
+        let registry = scanner.into_index();
 
         let expected_data_block = DataBlock {
             start: 48,
@@ -359,5 +369,95 @@ mod tests {
 
         let block = registry.get_data_block(0).unwrap();
         assert_eq!(block, &expected_data_block);
+    }
+
+    #[test]
+    fn does_not_generate_block_for_meta_only() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0x2),
+            next_segment_offset: 20,
+            raw_data_offset: 20,
+            objects: vec![ObjectMetaData {
+                path: "group".to_string(),
+                properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                raw_data_index: RawDataIndex::None,
+            }],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+
+        let registry = scanner.into_index();
+
+        let block = registry.get_data_block(0);
+        assert_eq!(block, None);
+    }
+
+    #[test]
+    fn updates_existing_properties() {
+        let segment = SegmentMetaData {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+                ObjectMetaData {
+                    path: "group/ch2".to_string(),
+                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataTypeRaw::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                },
+            ],
+        };
+        let segment2 = SegmentMetaData {
+            // 2 is meta data only.
+            toc: ToC::from_u32(0x2),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            objects: vec![
+                ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-52))],
+                    raw_data_index: RawDataIndex::None,
+                },
+                ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::None,
+                },
+            ],
+        };
+
+        let mut scanner = FileScanner::new();
+        scanner.add_segment_to_index(segment);
+        scanner.add_segment_to_index(segment2);
+        let index = scanner.into_index();
+
+        let group_properties = index.get_object_properties("group").unwrap();
+        assert_eq!(
+            group_properties,
+            &[(&"Prop".to_string(), &PropertyValue::I32(-52))]
+        );
+        let ch1_properties = index.get_object_properties("group/ch1").unwrap();
+        assert_eq!(
+            ch1_properties,
+            &[(&"Prop1".to_string(), &PropertyValue::I32(-2))]
+        );
     }
 }
