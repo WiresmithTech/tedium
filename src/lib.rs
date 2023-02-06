@@ -11,7 +11,7 @@ use std::{
 };
 
 use error::TdmsError;
-use index::FileScanner;
+use index::Index;
 use meta_data::PropertyValue;
 
 pub struct TdmsFile {
@@ -25,11 +25,11 @@ impl TdmsFile {
     pub fn load(path: &Path) -> Self {
         let mut file = File::open(path).unwrap();
         let file_size = file.metadata().unwrap().len();
-        let mut scanner = FileScanner::new();
+        let mut index = Index::new();
 
         loop {
             let segment = meta_data::SegmentMetaData::read(&mut file).unwrap();
-            let next_segment = scanner.add_segment_to_index(segment);
+            let next_segment = index.add_segment(segment);
             if let Err(_) = file.seek(SeekFrom::Start(next_segment)) {
                 break;
             }
@@ -37,7 +37,6 @@ impl TdmsFile {
                 break;
             }
         }
-        let index = scanner.into_index();
 
         Self { index, file }
     }

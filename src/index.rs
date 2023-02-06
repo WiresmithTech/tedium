@@ -4,8 +4,6 @@
 //! This will store known objects and their properties and data locations
 //! and make them easy to access.
 //!
-//! There is a seperate file scanner for the scanning process but this should be
-//! integrated into the index.
 
 use std::collections::HashMap;
 
@@ -96,35 +94,32 @@ impl ActiveObject {
     fn update(&mut self, _meta: &ObjectMetaData) {}
 
     /// Fetch the corresponding [`ObjectData`] for the active object.
-    fn get_object_data<'b, 'c>(&'b self, registry: &'c ObjectRegistry) -> &'c ObjectData {
-        registry
+    fn get_object_data<'b, 'c>(&'b self, index: &'c Objectindex) -> &'c ObjectData {
+        index
             .get(&self.path)
             .expect("Should always have a registered version of active object")
     }
 
     /// Fetch the corresponding [`ObjectData`] for the active object in a mutable form.
-    fn get_object_data_mut<'b, 'c>(
-        &'b self,
-        registry: &'c mut ObjectRegistry,
-    ) -> &'c mut ObjectData {
-        registry
+    fn get_object_data_mut<'b, 'c>(&'b self, index: &'c mut Objectindex) -> &'c mut ObjectData {
+        index
             .get_mut(&self.path)
             .expect("Should always have a registered version of active object")
     }
 }
 
 /// The inner format for registering the objects.
-type ObjectRegistry = HashMap<String, ObjectData>;
+type Objectindex = HashMap<String, ObjectData>;
 
 #[derive(Default, Debug, Clone)]
-pub struct FileScanner {
+pub struct Index {
     active_objects: Vec<ActiveObject>,
-    object_registry: ObjectRegistry,
+    objects: Objectindex,
     data_blocks: Vec<DataBlock>,
     next_segment_start: u64,
 }
 
-impl FileScanner {
+impl Index {
     pub fn new() -> Self {
         Self::default()
     }
@@ -132,7 +127,7 @@ impl FileScanner {
     /// Add the data for the next segment read from the file.
     ///
     /// Returns the start position of the next segment.
-    pub fn add_segment_to_index(&mut self, segment: SegmentMetaData) -> u64 {
+    pub fn add_segment(&mut self, segment: SegmentMetaData) -> u64 {
         //Basic procedure.
         //1. If new object list is set, clear active objects.
         //2. Update the active object list - adding new objects or updating properties and data locations for existing objects.
@@ -168,7 +163,7 @@ impl FileScanner {
         self.active_objects
             .iter()
             .map(|ao| {
-                ao.get_object_data(&self.object_registry)
+                ao.get_object_data(&self.objects)
                     .latest_data_format
                     .clone()
                     .expect("Getting data format from object that never had one")
@@ -189,7 +184,7 @@ impl FileScanner {
                 channel_index,
             };
             active_object
-                .get_object_data_mut(&mut self.object_registry)
+                .get_object_data_mut(&mut self.objects)
                 .add_data_location(location);
         }
     }
@@ -214,7 +209,7 @@ impl FileScanner {
             Some(active_object) => {
                 active_object.update(object);
                 active_object
-                    .get_object_data_mut(&mut self.object_registry)
+                    .get_object_data_mut(&mut self.objects)
                     .update(object);
             }
             None => {
@@ -230,13 +225,11 @@ impl FileScanner {
     ///
     /// Update an object which contains no data.
     fn update_meta_object(&mut self, object: &ObjectMetaData) {
-        match self.object_registry.get_mut(&object.path) {
+        match self.objects.get_mut(&object.path) {
             Some(found_object) => found_object.update(object),
             None => {
                 let object_data = ObjectData::from_metadata(object);
-                let old = self
-                    .object_registry
-                    .insert(object_data.path.clone(), object_data);
+                let old = self.objects.insert(object_data.path.clone(), object_data);
                 assert!(
                     matches!(old, None),
                     "Should not be possible to be replacing an existing object."
@@ -244,23 +237,6 @@ impl FileScanner {
             }
         }
     }
-
-    pub fn into_index(mut self) -> Index {
-        self.deactivate_all_objects();
-
-        Index {
-            objects: self.object_registry,
-            data_blocks: self.data_blocks,
-        }
-    }
-}
-
-pub struct Index {
-    objects: ObjectRegistry,
-    data_blocks: Vec<DataBlock>,
-}
-
-impl Index {
     pub fn get_object_properties(&self, path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
         self.objects
             .get(path)
@@ -338,28 +314,26 @@ mod tests {
             ],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
+        let mut index = Index::new();
+        index.add_segment(segment);
 
-        let registry = scanner.into_index();
-
-        let group_properties = registry.get_object_properties("group").unwrap();
+        let group_properties = index.get_object_properties("group").unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
-        let ch1_properties = registry.get_object_properties("group/ch1").unwrap();
+        let ch1_properties = index.get_object_properties("group/ch1").unwrap();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
         );
-        let ch2_properties = registry.get_object_properties("group/ch2").unwrap();
+        let ch2_properties = index.get_object_properties("group/ch2").unwrap();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[DataLocation {
@@ -367,7 +341,7 @@ mod tests {
                 channel_index: 0
             }]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[DataLocation {
@@ -410,10 +384,8 @@ mod tests {
             ],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-
-        let registry = scanner.into_index();
+        let mut index = Index::new();
+        index.add_segment(segment);
 
         let expected_data_block = DataBlock {
             start: 48,
@@ -434,7 +406,7 @@ mod tests {
             byte_order: Endianess::Little,
         };
 
-        let block = registry.get_data_block(0).unwrap();
+        let block = index.get_data_block(0).unwrap();
         assert_eq!(block, &expected_data_block);
     }
 
@@ -488,11 +460,9 @@ mod tests {
                 },
             ],
         };
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
-
-        let registry = scanner.into_index();
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
         let expected_data_block = DataBlock {
             start: 576,
@@ -513,7 +483,7 @@ mod tests {
             byte_order: Endianess::Little,
         };
 
-        let block = registry.get_data_block(1).unwrap();
+        let block = index.get_data_block(1).unwrap();
         assert_eq!(block, &expected_data_block);
     }
 
@@ -567,11 +537,9 @@ mod tests {
                 },
             ],
         };
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
-
-        let registry = scanner.into_index();
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
         let expected_data_block = DataBlock {
             start: 576,
@@ -592,7 +560,7 @@ mod tests {
             byte_order: Endianess::Little,
         };
 
-        let block = registry.get_data_block(1).unwrap();
+        let block = index.get_data_block(1).unwrap();
         assert_eq!(block, &expected_data_block);
     }
 
@@ -609,12 +577,10 @@ mod tests {
             }],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
+        let mut index = Index::new();
+        index.add_segment(segment);
 
-        let registry = scanner.into_index();
-
-        let block = registry.get_data_block(0);
+        let block = index.get_data_block(0);
         assert_eq!(block, None);
     }
 
@@ -669,10 +635,9 @@ mod tests {
             ],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
-        let index = scanner.into_index();
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
         let group_properties = index.get_object_properties("group").unwrap();
         assert_eq!(
@@ -730,29 +695,27 @@ mod tests {
             }],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
-        let registry = scanner.into_index();
-
-        let group_properties = registry.get_object_properties("group").unwrap();
+        let group_properties = index.get_object_properties("group").unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
-        let ch1_properties = registry.get_object_properties("group/ch1").unwrap();
+        let ch1_properties = index.get_object_properties("group/ch1").unwrap();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-2))]
         );
-        let ch2_properties = registry.get_object_properties("group/ch2").unwrap();
+        let ch2_properties = index.get_object_properties("group/ch2").unwrap();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -766,7 +729,7 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -822,13 +785,11 @@ mod tests {
             objects: vec![],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
-        let registry = scanner.into_index();
-
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -842,7 +803,7 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -898,13 +859,11 @@ mod tests {
             objects: vec![],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
-        let registry = scanner.into_index();
-
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -918,7 +877,7 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -981,19 +940,17 @@ mod tests {
             }],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
-        let registry = scanner.into_index();
-
-        let ch3_properties = registry.get_object_properties("group/ch3").unwrap();
+        let ch3_properties = index.get_object_properties("group/ch3").unwrap();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
         );
 
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -1007,7 +964,7 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -1021,7 +978,7 @@ mod tests {
                 }
             ]
         );
-        let ch3_data = registry.get_channel_data_positions("group/ch3").unwrap();
+        let ch3_data = index.get_channel_data_positions("group/ch3").unwrap();
         assert_eq!(
             ch3_data,
             &[DataLocation {
@@ -1078,19 +1035,17 @@ mod tests {
             }],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
 
-        let registry = scanner.into_index();
-
-        let ch3_properties = registry.get_object_properties("group/ch3").unwrap();
+        let ch3_properties = index.get_object_properties("group/ch3").unwrap();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
         );
 
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[DataLocation {
@@ -1098,7 +1053,7 @@ mod tests {
                 channel_index: 0
             },]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[DataLocation {
@@ -1106,7 +1061,7 @@ mod tests {
                 channel_index: 1
             },]
         );
-        let ch3_data = registry.get_channel_data_positions("group/ch3").unwrap();
+        let ch3_data = index.get_channel_data_positions("group/ch3").unwrap();
         assert_eq!(
             ch3_data,
             &[DataLocation {
@@ -1177,14 +1132,12 @@ mod tests {
             }],
         };
 
-        let mut scanner = FileScanner::new();
-        scanner.add_segment_to_index(segment);
-        scanner.add_segment_to_index(segment2);
-        scanner.add_segment_to_index(segment3);
+        let mut index = Index::new();
+        index.add_segment(segment);
+        index.add_segment(segment2);
+        index.add_segment(segment3);
 
-        let registry = scanner.into_index();
-
-        let ch1_data = registry.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -1198,7 +1151,7 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = registry.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
         assert_eq!(
             ch2_data,
             &[DataLocation {
@@ -1206,7 +1159,7 @@ mod tests {
                 channel_index: 1
             },]
         );
-        let ch3_data = registry.get_channel_data_positions("group/ch3").unwrap();
+        let ch3_data = index.get_channel_data_positions("group/ch3").unwrap();
         assert_eq!(
             ch3_data,
             &[
