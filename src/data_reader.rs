@@ -4,7 +4,10 @@
 
 use byteorder::{ByteOrder, ReadBytesExt};
 use num_traits::FromPrimitive;
-use std::{io::Read, marker::PhantomData};
+use std::{
+    io::{BufReader, Read, Seek},
+    marker::PhantomData,
+};
 use thiserror::Error;
 
 use crate::meta_data::{DataTypeRaw, PropertyValue};
@@ -19,24 +22,36 @@ pub enum TdmsReaderError {
     UnknownPropertyType(u32),
     #[error("Unsupported Property Type: {0:?}")]
     UnsupportedType(DataTypeRaw),
-    #[error("Attempted to read header where no header exists")]
-    HeaderPatternNotMatched,
+    #[error("Attempted to read header where no header exists. Bytes: {0:X?}")]
+    HeaderPatternNotMatched([u8; 4]),
 }
 
 type Result<T> = std::result::Result<T, TdmsReaderError>;
 
 /// Wraps a reader with a byte order for binary reads.
 pub struct TdmsReader<'r, O: ByteOrder, R: ReadBytesExt> {
-    pub inner: &'r mut R,
+    pub inner: BufReader<&'r mut R>,
     _order: PhantomData<O>,
 }
 
-impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
+impl<'r, O: ByteOrder, R: ReadBytesExt + Seek> TdmsReader<'r, O, R> {
     pub fn from_reader(reader: &'r mut R) -> Self {
         Self {
-            inner: reader,
+            inner: BufReader::new(reader),
             _order: PhantomData,
         }
+    }
+
+    /// Move to an absolute position in the file.
+    pub fn to_file_position(&mut self, position: u64) -> Result<()> {
+        self.inner.seek(std::io::SeekFrom::Start(position))?;
+        Ok(())
+    }
+
+    /// Move relative to the current file position.
+    pub fn move_position(&mut self, offset: i64) -> Result<()> {
+        self.inner.seek_relative(offset)?;
+        Ok(())
     }
 }
 

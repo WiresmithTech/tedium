@@ -4,7 +4,7 @@
 //! for providing the basis of some of this.
 //!
 
-use std::io::Read;
+use std::io::{Read, Seek};
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use num_derive::FromPrimitive;
@@ -157,12 +157,15 @@ impl SegmentMetaData {
         LEAD_IN_BYTES + self.next_segment_offset
     }
 
-    pub fn read(reader: &mut impl ReadBytesExt) -> Result<SegmentMetaData, TdmsReaderError> {
+    pub fn read(
+        reader: &mut (impl ReadBytesExt + Seek),
+    ) -> Result<SegmentMetaData, TdmsReaderError> {
         let mut tag = [0u8; 4];
         reader.read_exact(&mut tag)?;
+        println!("{:?}", std::str::from_utf8(&tag).unwrap());
 
         if tag != [0x54, 0x44, 0x53, 0x6D] {
-            return Err(TdmsReaderError::HeaderPatternNotMatched);
+            return Err(TdmsReaderError::HeaderPatternNotMatched(tag));
         }
 
         let toc = ToC::from_u32(reader.read_u32::<LittleEndian>()?);
