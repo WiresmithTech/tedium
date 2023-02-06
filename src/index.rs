@@ -1,7 +1,11 @@
-//! The registry module creates the data structure which acts as
+//! The index module creates the data structure which acts as
 //! an in memory index of the file contents.
 //!
-//! This will store known objects and their properties and data locations.
+//! This will store known objects and their properties and data locations
+//! and make them easy to access.
+//!
+//! There is a seperate file scanner for the scanning process but this should be
+//! integrated into the index.
 
 use std::collections::HashMap;
 
@@ -25,6 +29,7 @@ enum DataFormat {
 }
 
 impl DataFormat {
+    ///Get the actual data format. Returns None for meta states e.g. None.
     fn from_index(index: &RawDataIndex) -> Option<Self> {
         match index {
             RawDataIndex::RawData(raw_meta) => Some(DataFormat::RawData(raw_meta.clone())),
@@ -33,6 +38,7 @@ impl DataFormat {
     }
 }
 
+/// Contains the data stored in the index for each object.
 #[derive(Clone, PartialEq, Debug)]
 struct ObjectData {
     path: String,
@@ -42,7 +48,7 @@ struct ObjectData {
 }
 
 impl ObjectData {
-    //todo: this can be more efficient
+    /// Create the object data from the file metadata.
     fn from_metadata(meta: &ObjectMetaData) -> Self {
         let mut new = Self {
             path: meta.path.clone(),
@@ -55,6 +61,10 @@ impl ObjectData {
 
         new
     }
+
+    /// Update the object data from a new metadata object.
+    ///
+    /// For example update new properties.
     fn update(&mut self, other: &ObjectMetaData) {
         for (name, value) in other.properties.iter() {
             self.properties.insert(name.clone(), value.clone());
@@ -64,15 +74,19 @@ impl ObjectData {
         }
     }
 
+    /// Add a new data location.
     fn add_data_location(&mut self, location: DataLocation) {
         self.data_locations.push(location);
     }
 
+    /// Fetch all the properties as an array.
     fn get_all_properties(&self) -> Vec<(&String, &PropertyValue)> {
         self.properties.iter().collect()
     }
 }
 
+/// Data cached for the current "active" objects which are the objects
+/// that we are expecting data in the next data block.
 #[derive(Debug, Clone)]
 struct ActiveObject {
     path: String,
@@ -81,11 +95,14 @@ struct ActiveObject {
 impl ActiveObject {
     fn update(&mut self, _meta: &ObjectMetaData) {}
 
+    /// Fetch the corresponding [`ObjectData`] for the active object.
     fn get_object_data<'b, 'c>(&'b self, registry: &'c ObjectRegistry) -> &'c ObjectData {
         registry
             .get(&self.path)
             .expect("Should always have a registered version of active object")
     }
+
+    /// Fetch the corresponding [`ObjectData`] for the active object in a mutable form.
     fn get_object_data_mut<'b, 'c>(
         &'b self,
         registry: &'c mut ObjectRegistry,
@@ -96,6 +113,7 @@ impl ActiveObject {
     }
 }
 
+/// The inner format for registering the objects.
 type ObjectRegistry = HashMap<String, ObjectData>;
 
 #[derive(Default, Debug, Clone)]
@@ -111,7 +129,10 @@ impl FileScanner {
         Self::default()
     }
 
-    pub fn add_segment_to_index(&mut self, segment: SegmentMetaData) {
+    /// Add the data for the next segment read from the file.
+    ///
+    /// Returns the start position of the next segment.
+    pub fn add_segment_to_index(&mut self, segment: SegmentMetaData) -> u64 {
         //Basic procedure.
         //1. If new object list is set, clear active objects.
         //2. Update the active object list - adding new objects or updating properties and data locations for existing objects.
@@ -139,8 +160,10 @@ impl FileScanner {
         }
 
         self.next_segment_start += segment.total_size_bytes();
+        self.next_segment_start
     }
 
+    /// Get all of the [`RawDataMeta`] for the active channels.
     fn get_active_raw_data_meta(&self) -> Vec<RawDataMeta> {
         self.active_objects
             .iter()

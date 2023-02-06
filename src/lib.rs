@@ -14,12 +14,14 @@ use error::TdmsError;
 use index::FileScanner;
 use meta_data::PropertyValue;
 
-pub struct TdmsReader {
+pub struct TdmsFile {
     index: index::Index,
     file: File,
 }
 
-impl TdmsReader {
+impl TdmsFile {
+    /// Load the file from the path. This step will load and index the metadata
+    /// ready for access.
     pub fn load(path: &Path) -> Self {
         let mut file = File::open(path).unwrap();
         let file_size = file.metadata().unwrap().len();
@@ -27,9 +29,8 @@ impl TdmsReader {
 
         loop {
             let segment = meta_data::SegmentMetaData::read(&mut file).unwrap();
-            let raw_data_size = segment.next_segment_offset - segment.raw_data_offset;
-            scanner.add_segment_to_index(segment);
-            if let Err(_) = file.seek(SeekFrom::Current(raw_data_size as i64)) {
+            let next_segment = scanner.add_segment_to_index(segment);
+            if let Err(_) = file.seek(SeekFrom::Start(next_segment)) {
                 break;
             }
             if file_size == file.stream_position().unwrap() {
@@ -41,6 +42,10 @@ impl TdmsReader {
         Self { index, file }
     }
 
+    /// Read the property by name from the full object path.
+    ///
+    /// The object path is the internal representation. This function will be changed for ergonomics in the future.
+    /// For now use the format `/'group'/'channel'` where you do need the single quotes.
     pub fn read_property(
         &self,
         object_path: &str,
@@ -49,6 +54,10 @@ impl TdmsReader {
         self.index.get_object_property(object_path, property)
     }
 
+    /// Read all properties for the given object path.
+    ///
+    /// The object path is the internal representation. This function will be changed for ergonomics in the future.
+    /// For now use the format `/'group'/'channel'` where you do need the single quotes.
     pub fn read_all_properties(&self, object_path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
         self.index.get_object_properties(object_path)
     }

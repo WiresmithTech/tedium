@@ -148,6 +148,8 @@ impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> BlockReader<'a, R, O> {
         Ok(last_index + 1)
     }
 
+    //used for testing right now.
+    #[allow(dead_code)]
     fn read_vec(self) -> Result<Vec<f64>, TdmsError> {
         let mut values = vec![0.0; self.samples as usize];
         self.read(&mut values[..])?;

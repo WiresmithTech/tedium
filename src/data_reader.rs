@@ -1,6 +1,6 @@
 //! Contains wrappers around readers to encode TDMS specific formatting e.g. endianess.
 //!
-//! Still needs a bit of work but expect all file reads to wrap or extend this type.
+//! Also contains a TdmsDataReader trait for extending the reader with new data types.
 
 use byteorder::{ByteOrder, ReadBytesExt};
 use num_traits::FromPrimitive;

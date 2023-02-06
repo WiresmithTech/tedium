@@ -1,4 +1,4 @@
-//! This module encodes the types that we will encounter in the files.
+//! This module encodes the meta data types that we will encounter in the files.
 //!
 //! Credit due to AJAnderson from https://github.com/AJAnderson/tdms/blob/master/tdms/src/tdms_datatypes.rs
 //! for providing the basis of some of this.
@@ -162,7 +162,6 @@ impl SegmentMetaData {
     ) -> Result<SegmentMetaData, TdmsReaderError> {
         let mut tag = [0u8; 4];
         reader.read_exact(&mut tag)?;
-        println!("{:?}", std::str::from_utf8(&tag).unwrap());
 
         if tag != [0x54, 0x44, 0x53, 0x6D] {
             return Err(TdmsReaderError::HeaderPatternNotMatched(tag));
