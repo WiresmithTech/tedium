@@ -1,5 +1,6 @@
 //! Contains wrappers around readers to encode TDMS specific formatting e.g. endianess.
 //!
+//! Still needs a bit of work but expect all file reads to wrap or extend this type.
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use num_traits::FromPrimitive;
@@ -49,19 +50,6 @@ struct TdmsReader<'r, O: ByteOrder, R: ReadBytesExt> {
     _order: PhantomData<O>,
 }
 
-/// Macro for scripting the wrapping of the different read methods.
-///
-/// Should provide the type and the methods will be created with the type name.
-macro_rules! read_type {
-    ($type:ty) => {
-        paste::item! {
-        pub fn [<read_ $type>] (&mut self) -> Result<$type> {
-            Ok(self.inner.[<read_ $type>]::<O>()?)
-        }
-        }
-    };
-}
-
 impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
     pub fn from_reader(reader: &'r mut R) -> Self {
         Self {
@@ -69,13 +57,9 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
             _order: PhantomData,
         }
     }
-    read_type!(i32);
-    read_type!(u32);
-    read_type!(u64);
-    read_type!(f64);
 
     pub fn read_string(&mut self) -> Result<String> {
-        let length = self.read_u32()?;
+        let length: u32 = self.read_value()?;
         let mut buffer = vec![0; length as usize];
         self.inner.read_exact(&mut buffer[..])?;
         let value = String::from_utf8(buffer)?;
@@ -86,11 +70,11 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         let raw_type = self.read_raw_data_type()?;
 
         match raw_type {
-            DataTypeRaw::I32 => Ok(PropertyValue::I32(self.read_i32()?)),
-            DataTypeRaw::U32 => Ok(PropertyValue::U32(self.read_u32()?)),
-            DataTypeRaw::U64 => Ok(PropertyValue::U64(self.read_u64()?)),
+            DataTypeRaw::I32 => Ok(PropertyValue::I32(self.read_value()?)),
+            DataTypeRaw::U32 => Ok(PropertyValue::U32(self.read_value()?)),
+            DataTypeRaw::U64 => Ok(PropertyValue::U64(self.read_value()?)),
             DataTypeRaw::DoubleFloat | DataTypeRaw::DoubleFloatWithUnit => {
-                Ok(PropertyValue::Double(self.read_f64()?))
+                Ok(PropertyValue::Double(self.read_value()?))
             }
             DataTypeRaw::TdmsString => Ok(PropertyValue::String(self.read_string()?)),
             _ => Err(TdmsReaderError::UnsupportedType(raw_type)),
@@ -98,7 +82,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
     }
 
     fn read_raw_data_type(&mut self) -> Result<DataTypeRaw> {
-        let prop_type = self.read_u32()?;
+        let prop_type: u32 = self.read_value()?;
         let prop_type = <DataTypeRaw as FromPrimitive>::from_u32(prop_type)
             .ok_or(TdmsReaderError::UnknownPropertyType(prop_type))?;
         Ok(prop_type)
@@ -106,7 +90,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
 
     /// Read the metadata section of the segment.
     fn read_meta_data(&mut self) -> Result<Vec<ObjectMetaData>> {
-        let object_count = self.read_u32()?;
+        let object_count: u32 = self.read_value()?;
         let mut objects = Vec::with_capacity(object_count as usize);
 
         for _ in 0..object_count {
@@ -118,7 +102,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
 
     fn read_object_meta(&mut self) -> Result<ObjectMetaData> {
         let path = self.read_string()?;
-        let raw_index = self.read_u32()?;
+        let raw_index: u32 = self.read_value()?;
 
         let raw_data = match raw_index {
             0x0000_0000 => RawDataIndex::MatchPrevious,
@@ -128,7 +112,7 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
             _ => self.read_raw_data_meta()?,
         };
 
-        let property_count = self.read_u32()?;
+        let property_count: u32 = self.read_value()?;
 
         let mut properties = Vec::with_capacity(property_count as usize);
 
@@ -147,8 +131,8 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
 
     fn read_raw_data_meta(&mut self) -> Result<RawDataIndex> {
         let data_type = self.read_raw_data_type()?;
-        let _array_dims = self.read_u32()?; //always 1.
-        let number_of_values = self.read_u64()?;
+        let _array_dims: u32 = self.read_value()?; //always 1.
+        let number_of_values: u64 = self.read_value()?;
         let meta = RawDataMeta {
             data_type,
             number_of_values,
@@ -160,9 +144,9 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
 
     /// Called immediately after ToC has been read so we have determined the endianess.
     fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData> {
-        let _version = self.read_u32()?;
-        let next_segment_offset = self.read_u64()?;
-        let raw_data_offset = self.read_u64()?;
+        let _version: u32 = self.read_value()?;
+        let next_segment_offset = self.read_value()?;
+        let raw_data_offset = self.read_value()?;
 
         //todo handle no meta data mode.
         let objects = self.read_meta_data()?;
@@ -175,6 +159,30 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
         })
     }
 }
+
+trait TdmsDataReader<O, T> {
+    fn read_value(&mut self) -> Result<T>;
+}
+
+/// Macro for scripting the wrapping of the different read methods.
+///
+/// Should provide the type and the methods will be created with the type name.
+macro_rules! read_type {
+    ($type:ty) => {
+        impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, $type> for TdmsReader<'r, O, R> {
+            paste::item! {
+            fn read_value (&mut self) -> Result<$type> {
+                Ok(self.inner.[<read_ $type>]::<O>()?)
+            }
+            }
+        }
+    };
+}
+
+read_type!(i32);
+read_type!(u32);
+read_type!(u64);
+read_type!(f64);
 
 #[cfg(test)]
 mod tests {
@@ -195,7 +203,7 @@ mod tests {
                     let bytes = original_value.to_le_bytes();
                     let mut reader = Cursor::new(bytes);
                     let mut tdms_reader = TdmsReader::<LittleEndian,_>::from_reader(&mut reader);
-                    let read_value = tdms_reader.[< read_ $type>] ().unwrap();
+                    let read_value: $type = tdms_reader.read_value().unwrap();
                     assert_eq!(read_value, original_value);
                 }
 
@@ -205,7 +213,7 @@ mod tests {
                     let bytes = original_value.to_be_bytes();
                     let mut reader = Cursor::new(bytes);
                     let mut tdms_reader = TdmsReader::<BigEndian,_>::from_reader(&mut reader);
-                    let read_value = tdms_reader.[< read_ $type>] ().unwrap();
+                    let read_value: $type = tdms_reader.read_value().unwrap();
                     assert_eq!(read_value, original_value);
                 }
             }
