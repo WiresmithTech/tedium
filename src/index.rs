@@ -15,9 +15,9 @@ use crate::raw_data::DataBlock;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataLocation {
     /// The index of the data block with the data in.
-    data_block: usize,
+    pub data_block: usize,
     /// The channel index in that block.
-    channel_index: usize,
+    pub channel_index: usize,
 }
 
 ///Represents actual data formats that can store data.

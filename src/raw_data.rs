@@ -5,9 +5,12 @@ use std::{
     marker::PhantomData,
 };
 
-use byteorder::{ByteOrder, ReadBytesExt};
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
-use crate::file_types::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES};
+use crate::{
+    error::TdmsError,
+    file_types::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DataLayout {
@@ -62,6 +65,55 @@ impl DataBlock {
             byte_order,
         }
     }
+
+    pub fn read(
+        &self,
+        channel_index: usize,
+        reader: &mut (impl ReadBytesExt + Seek),
+        output: &mut [f64],
+    ) -> Result<usize, std::io::Error> {
+        //first is element size, second is total size.
+        let channel_sizes: Vec<(u64, u64)> = self
+            .channels
+            .iter()
+            .map(|channel_layout| {
+                let element_size = 8; //only support doubles for testing.
+                let total_size = channel_layout.number_of_values * element_size;
+                (element_size, total_size)
+            })
+            .collect();
+
+        let mut start_offset = 0;
+        let mut step: u64 = 0;
+
+        match self.layout {
+            DataLayout::Interleaved => {
+                start_offset = channel_sizes.iter().take(channel_index).map(|e| e.0).sum();
+                step =
+                    channel_sizes.iter().map(|e| e.0).sum::<u64>() - channel_sizes[channel_index].0;
+            }
+            DataLayout::Contigious => {
+                start_offset = channel_sizes.iter().take(channel_index).map(|e| e.1).sum();
+            }
+        }
+
+        match self.byte_order {
+            Endianess::Big => BlockReader::<_, BigEndian>::new(
+                self.start + start_offset,
+                step,
+                self.channels[channel_index].number_of_values,
+                reader,
+            )?
+            .read(output),
+            Endianess::Little => BlockReader::<_, LittleEndian>::new(
+                self.start + start_offset,
+                step,
+                self.channels[channel_index].number_of_values,
+                reader,
+            )?
+            .read(output),
+        }
+    }
 }
 
 struct BlockReader<'a, R: ReadBytesExt + Seek, O: ByteOrder> {
@@ -89,20 +141,16 @@ impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> BlockReader<'a, R, O> {
         })
     }
 
-    fn read_next(&mut self) -> Result<f64, std::io::Error> {
-        if self.samples_read != 0 && self.step_bytes != 0 {
-            self.reader.seek(SeekFrom::Current(self.step_bytes))?;
+    fn read(&mut self, output: &mut [f64]) -> Result<usize, std::io::Error> {
+        let mut last_index = 0;
+        for (index, sample) in output.iter_mut().take(self.samples as usize).enumerate() {
+            if index != 0 {
+                self.reader.seek(SeekFrom::Current(self.step_bytes))?;
+            }
+            *sample = self.reader.read_f64::<O>()?;
+            last_index = index;
         }
-        let sample = self.reader.read_f64::<O>()?;
-        self.samples_read += 1;
-        Ok(sample)
-    }
-
-    fn read(&mut self, output: &mut [f64]) -> Result<(), std::io::Error> {
-        for sample in output.iter_mut() {
-            *sample = self.read_next()?
-        }
-        Ok(())
+        Ok(last_index + 1)
     }
 
     fn read_vec(&mut self) -> Result<Vec<f64>, std::io::Error> {
@@ -111,16 +159,6 @@ impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> BlockReader<'a, R, O> {
         Ok(values)
     }
 }
-
-/*
-impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> std::iter::Iterator for BlockReader<'a, R, O> {
-    type Item = f64;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.read_next()
-    }
-}
-*/
 
 #[cfg(test)]
 mod test {
