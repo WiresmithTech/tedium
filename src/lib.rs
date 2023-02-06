@@ -1,7 +1,7 @@
 mod data_reader;
 mod error;
-mod file_types;
 mod index;
+mod meta_data;
 mod raw_data;
 
 use std::{
@@ -11,8 +11,8 @@ use std::{
 };
 
 use error::TdmsError;
-use file_types::PropertyValue;
 use index::FileScanner;
+use meta_data::PropertyValue;
 
 pub struct TdmsReader {
     index: index::Index,
@@ -26,7 +26,7 @@ impl TdmsReader {
         let mut scanner = FileScanner::new();
 
         loop {
-            let segment = data_reader::read_segment(&mut file).unwrap();
+            let segment = meta_data::SegmentMetaData::read(&mut file).unwrap();
             let raw_data_size = segment.next_segment_offset - segment.raw_data_offset;
             scanner.add_segment_to_index(segment);
             if let Err(_) = file.seek(SeekFrom::Current(raw_data_size as i64)) {

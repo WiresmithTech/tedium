@@ -9,7 +9,7 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
 use crate::{
     error::TdmsError,
-    file_types::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
+    meta_data::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -166,7 +166,7 @@ mod test {
 
     use byteorder::{BigEndian, WriteBytesExt};
 
-    use crate::file_types::{DataTypeRaw, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
+    use crate::meta_data::{DataTypeRaw, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
 
     use super::*;
 

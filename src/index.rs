@@ -6,9 +6,7 @@
 use std::collections::HashMap;
 
 use crate::error::TdmsError;
-use crate::file_types::{
-    ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, SegmentMetaData,
-};
+use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, SegmentMetaData};
 use crate::raw_data::DataBlock;
 
 /// A store for a given channel point to the data block with its data and the index within that.
@@ -274,12 +272,12 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use crate::file_types::DataTypeRaw;
-    use crate::file_types::ObjectMetaData;
-    use crate::file_types::PropertyValue;
-    use crate::file_types::RawDataIndex;
-    use crate::file_types::RawDataMeta;
-    use crate::file_types::ToC;
+    use crate::meta_data::DataTypeRaw;
+    use crate::meta_data::ObjectMetaData;
+    use crate::meta_data::PropertyValue;
+    use crate::meta_data::RawDataIndex;
+    use crate::meta_data::RawDataMeta;
+    use crate::meta_data::ToC;
     use crate::raw_data::{DataLayout, Endianess};
 
     use super::*;

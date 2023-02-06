@@ -2,14 +2,12 @@
 //!
 //! Still needs a bit of work but expect all file reads to wrap or extend this type.
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
+use byteorder::{ByteOrder, ReadBytesExt};
 use num_traits::FromPrimitive;
-use std::marker::PhantomData;
+use std::{io::Read, marker::PhantomData};
 use thiserror::Error;
 
-use crate::file_types::{
-    DataTypeRaw, ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, SegmentMetaData, ToC,
-};
+use crate::meta_data::{DataTypeRaw, PropertyValue};
 
 #[derive(Error, Debug)]
 pub enum TdmsReaderError {
@@ -27,26 +25,9 @@ pub enum TdmsReaderError {
 
 type Result<T> = std::result::Result<T, TdmsReaderError>;
 
-pub fn read_segment(reader: &mut impl ReadBytesExt) -> Result<SegmentMetaData> {
-    let mut tag = [0u8; 4];
-    reader.read_exact(&mut tag)?;
-
-    if tag != [0x54, 0x44, 0x53, 0x6D] {
-        return Err(TdmsReaderError::HeaderPatternNotMatched);
-    }
-
-    let toc = ToC::from_u32(reader.read_u32::<LittleEndian>()?);
-
-    let segment = match toc.big_endian {
-        true => TdmsReader::<BigEndian, _>::from_reader(reader).read_segment(toc)?,
-        false => TdmsReader::<LittleEndian, _>::from_reader(reader).read_segment(toc)?,
-    };
-    Ok(segment)
-}
-
 /// Wraps a reader with a byte order for binary reads.
-struct TdmsReader<'r, O: ByteOrder, R: ReadBytesExt> {
-    inner: &'r mut R,
+pub struct TdmsReader<'r, O: ByteOrder, R: ReadBytesExt> {
+    pub inner: &'r mut R,
     _order: PhantomData<O>,
 }
 
@@ -57,111 +38,19 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsReader<'r, O, R> {
             _order: PhantomData,
         }
     }
-
-    pub fn read_string(&mut self) -> Result<String> {
-        let length: u32 = self.read_value()?;
-        let mut buffer = vec![0; length as usize];
-        self.inner.read_exact(&mut buffer[..])?;
-        let value = String::from_utf8(buffer)?;
-        Ok(value)
-    }
-
-    pub fn read_property(&mut self) -> Result<PropertyValue> {
-        let raw_type = self.read_raw_data_type()?;
-
-        match raw_type {
-            DataTypeRaw::I32 => Ok(PropertyValue::I32(self.read_value()?)),
-            DataTypeRaw::U32 => Ok(PropertyValue::U32(self.read_value()?)),
-            DataTypeRaw::U64 => Ok(PropertyValue::U64(self.read_value()?)),
-            DataTypeRaw::DoubleFloat | DataTypeRaw::DoubleFloatWithUnit => {
-                Ok(PropertyValue::Double(self.read_value()?))
-            }
-            DataTypeRaw::TdmsString => Ok(PropertyValue::String(self.read_string()?)),
-            _ => Err(TdmsReaderError::UnsupportedType(raw_type)),
-        }
-    }
-
-    fn read_raw_data_type(&mut self) -> Result<DataTypeRaw> {
-        let prop_type: u32 = self.read_value()?;
-        let prop_type = <DataTypeRaw as FromPrimitive>::from_u32(prop_type)
-            .ok_or(TdmsReaderError::UnknownPropertyType(prop_type))?;
-        Ok(prop_type)
-    }
-
-    /// Read the metadata section of the segment.
-    fn read_meta_data(&mut self) -> Result<Vec<ObjectMetaData>> {
-        let object_count: u32 = self.read_value()?;
-        let mut objects = Vec::with_capacity(object_count as usize);
-
-        for _ in 0..object_count {
-            objects.push(self.read_object_meta()?);
-        }
-
-        Ok(objects)
-    }
-
-    fn read_object_meta(&mut self) -> Result<ObjectMetaData> {
-        let path = self.read_string()?;
-        let raw_index: u32 = self.read_value()?;
-
-        let raw_data = match raw_index {
-            0x0000_0000 => RawDataIndex::MatchPrevious,
-            0xFFFF_FFFF => RawDataIndex::None,
-            0x69120000..=0x6912FFFF => todo!(), // daqmx 1
-            0x69130000..=0x6913FFFF => todo!(), //daqmx 2
-            _ => self.read_raw_data_meta()?,
-        };
-
-        let property_count: u32 = self.read_value()?;
-
-        let mut properties = Vec::with_capacity(property_count as usize);
-
-        for _prop in 0..property_count {
-            let name = self.read_string()?;
-            let value = self.read_property()?;
-            properties.push((name, value));
-        }
-
-        Ok(ObjectMetaData {
-            path,
-            properties,
-            raw_data_index: raw_data,
-        })
-    }
-
-    fn read_raw_data_meta(&mut self) -> Result<RawDataIndex> {
-        let data_type = self.read_raw_data_type()?;
-        let _array_dims: u32 = self.read_value()?; //always 1.
-        let number_of_values: u64 = self.read_value()?;
-        let meta = RawDataMeta {
-            data_type,
-            number_of_values,
-            total_size_bytes: None,
-        };
-
-        Ok(RawDataIndex::RawData(meta))
-    }
-
-    /// Called immediately after ToC has been read so we have determined the endianess.
-    fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData> {
-        let _version: u32 = self.read_value()?;
-        let next_segment_offset = self.read_value()?;
-        let raw_data_offset = self.read_value()?;
-
-        //todo handle no meta data mode.
-        let objects = self.read_meta_data()?;
-
-        Ok(SegmentMetaData {
-            toc: toc,
-            next_segment_offset,
-            raw_data_offset,
-            objects,
-        })
-    }
 }
 
-trait TdmsDataReader<O, T> {
+pub trait TdmsDataReader<O, T> {
     fn read_value(&mut self) -> Result<T>;
+    fn read_vec(&mut self, length: usize) -> Result<Vec<T>> {
+        let mut values = Vec::with_capacity(length as usize);
+
+        for _ in 0..length {
+            values.push(self.read_value()?);
+        }
+
+        Ok(values)
+    }
 }
 
 /// Macro for scripting the wrapping of the different read methods.
@@ -184,10 +73,44 @@ read_type!(u32);
 read_type!(u64);
 read_type!(f64);
 
+impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, String> for TdmsReader<'r, O, R> {
+    fn read_value(&mut self) -> Result<String> {
+        let length: u32 = self.read_value()?;
+        let mut buffer = vec![0; length as usize];
+        self.inner.read_exact(&mut buffer[..])?;
+        let value = String::from_utf8(buffer)?;
+        Ok(value)
+    }
+}
+
+impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, DataTypeRaw> for TdmsReader<'r, O, R> {
+    fn read_value(&mut self) -> Result<DataTypeRaw> {
+        let prop_type: u32 = self.read_value()?;
+        let prop_type = <DataTypeRaw as FromPrimitive>::from_u32(prop_type)
+            .ok_or(TdmsReaderError::UnknownPropertyType(prop_type))?;
+        Ok(prop_type)
+    }
+}
+
+impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, PropertyValue> for TdmsReader<'r, O, R> {
+    fn read_value(&mut self) -> Result<PropertyValue> {
+        let raw_type: DataTypeRaw = self.read_value()?;
+
+        match raw_type {
+            DataTypeRaw::I32 => Ok(PropertyValue::I32(self.read_value()?)),
+            DataTypeRaw::U32 => Ok(PropertyValue::U32(self.read_value()?)),
+            DataTypeRaw::U64 => Ok(PropertyValue::U64(self.read_value()?)),
+            DataTypeRaw::DoubleFloat | DataTypeRaw::DoubleFloatWithUnit => {
+                Ok(PropertyValue::Double(self.read_value()?))
+            }
+            DataTypeRaw::TdmsString => Ok(PropertyValue::String(self.read_value()?)),
+            _ => Err(TdmsReaderError::UnsupportedType(raw_type)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-
-    use crate::file_types::RawDataMeta;
 
     use super::*;
     use byteorder::{BigEndian, LittleEndian};
@@ -234,7 +157,7 @@ mod tests {
         ];
         let mut cursor = Cursor::new(test_buffer);
         let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
-        let string = reader.read_string().unwrap();
+        let string: String = reader.read_value().unwrap();
         assert_eq!(string, String::from("/'Measured Throughput Data (Volts)'"));
     }
 
@@ -248,94 +171,11 @@ mod tests {
         ];
         let mut cursor = Cursor::new(test_buffer);
         let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
-        let result = reader.read_property();
+        let result: Result<PropertyValue> = reader.read_value();
         println!("{result:?}");
         assert!(matches!(
             result,
             Err(TdmsReaderError::UnknownPropertyType(0x23))
         ));
-    }
-
-    #[test]
-    fn test_properties_standard_data() {
-        //example from NI "TDMS internal file format"
-        let test_buffer = [
-            0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2F, 0x27, 0x47, 0x72, 0x6F, 0x75,
-            0x70, 0x27, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
-            0x70, 0x72, 0x6F, 0x70, 0x20, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x76, 0x61,
-            0x6C, 0x75, 0x65, 0x03, 0x00, 0x00, 0x00, 0x6E, 0x75, 0x6D, 0x03, 0x00, 0x00, 0x00,
-            0x0A, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, 0x2F, 0x27, 0x47, 0x72, 0x6F, 0x75,
-            0x70, 0x27, 0x2F, 0x27, 0x43, 0x68, 0x61, 0x6E, 0x6E, 0x65, 0x6C, 0x31, 0x27, 0x14,
-            0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-
-        let mut cursor = Cursor::new(test_buffer);
-        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
-        let objects = reader.read_meta_data().unwrap();
-
-        let expected = vec![
-            ObjectMetaData {
-                path: String::from("/'Group'"),
-                properties: vec![
-                    (
-                        String::from("prop"),
-                        PropertyValue::String(String::from("value")),
-                    ),
-                    (String::from("num"), PropertyValue::I32(10)),
-                ],
-                raw_data_index: RawDataIndex::None,
-            },
-            ObjectMetaData {
-                path: String::from("/'Group'/'Channel1'"),
-                properties: vec![],
-                raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataTypeRaw::I32,
-                    number_of_values: 2,
-                    total_size_bytes: None,
-                }),
-            },
-        ];
-
-        assert_eq!(objects, expected);
-    }
-
-    #[test]
-    fn test_properties_raw_data_matches() {
-        //example from NI "TDMS internal file format"
-        let test_buffer = [
-            0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2F, 0x27, 0x47, 0x72, 0x6F, 0x75,
-            0x70, 0x27, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
-            0x70, 0x72, 0x6F, 0x70, 0x20, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x76, 0x61,
-            0x6C, 0x75, 0x65, 0x03, 0x00, 0x00, 0x00, 0x6E, 0x75, 0x6D, 0x03, 0x00, 0x00, 0x00,
-            0x0A, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, 0x2F, 0x27, 0x47, 0x72, 0x6F, 0x75,
-            0x70, 0x27, 0x2F, 0x27, 0x43, 0x68, 0x61, 0x6E, 0x6E, 0x65, 0x6C, 0x31, 0x27, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-
-        let mut cursor = Cursor::new(test_buffer);
-        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
-        let objects = reader.read_meta_data().unwrap();
-
-        let expected = vec![
-            ObjectMetaData {
-                path: String::from("/'Group'"),
-                properties: vec![
-                    (
-                        String::from("prop"),
-                        PropertyValue::String(String::from("value")),
-                    ),
-                    (String::from("num"), PropertyValue::I32(10)),
-                ],
-                raw_data_index: RawDataIndex::None,
-            },
-            ObjectMetaData {
-                path: String::from("/'Group'/'Channel1'"),
-                properties: vec![],
-                raw_data_index: RawDataIndex::MatchPrevious,
-            },
-        ];
-
-        assert_eq!(objects, expected);
     }
 }
