@@ -271,7 +271,7 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use crate::meta_data::DataTypeRaw;
+    use crate::data_types::DataType;
     use crate::meta_data::ObjectMetaData;
     use crate::meta_data::PropertyValue;
     use crate::meta_data::RawDataIndex;
@@ -297,7 +297,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -306,7 +306,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -367,7 +367,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -376,7 +376,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -393,12 +393,12 @@ mod tests {
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
@@ -426,7 +426,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -435,7 +435,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -470,12 +470,12 @@ mod tests {
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
@@ -503,7 +503,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -512,7 +512,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -547,12 +547,12 @@ mod tests {
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
@@ -600,7 +600,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -609,7 +609,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -668,7 +668,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -677,7 +677,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -762,7 +762,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -771,7 +771,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -836,7 +836,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -845,7 +845,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -909,7 +909,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -918,7 +918,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -933,7 +933,7 @@ mod tests {
                 path: "group/ch3".to_string(),
                 properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                 raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 }),
@@ -1004,7 +1004,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -1013,7 +1013,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -1028,7 +1028,7 @@ mod tests {
                 path: "group/ch3".to_string(),
                 properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                 raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 }),
@@ -1087,7 +1087,7 @@ mod tests {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -1096,7 +1096,7 @@ mod tests {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -1111,7 +1111,7 @@ mod tests {
                 path: "group/ch3".to_string(),
                 properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                 raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 }),
@@ -1125,7 +1125,7 @@ mod tests {
                 path: "group/ch1".to_string(),
                 properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                 raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 }),

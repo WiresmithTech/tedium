@@ -1,4 +1,5 @@
 mod data_reader;
+mod data_types;
 mod error;
 mod index;
 mod meta_data;

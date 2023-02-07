@@ -10,8 +10,9 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::meta_data::{DataTypeRaw, PropertyValue};
+use crate::meta_data::PropertyValue;
 
+use crate::data_types::DataType;
 #[derive(Error, Debug)]
 pub enum TdmsReaderError {
     #[error("IO Error")]
@@ -21,7 +22,7 @@ pub enum TdmsReaderError {
     #[error("Unknown Property Type: {0:X}")]
     UnknownPropertyType(u32),
     #[error("Unsupported Property Type: {0:?}")]
-    UnsupportedType(DataTypeRaw),
+    UnsupportedType(DataType),
     #[error("Attempted to read header where no header exists. Bytes: {0:X?}")]
     HeaderPatternNotMatched([u8; 4]),
 }
@@ -98,10 +99,10 @@ impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, String> for TdmsReader<'r, O, 
     }
 }
 
-impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, DataTypeRaw> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<DataTypeRaw> {
+impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, DataType> for TdmsReader<'r, O, R> {
+    fn read_value(&mut self) -> Result<DataType> {
         let prop_type: u32 = self.read_value()?;
-        let prop_type = <DataTypeRaw as FromPrimitive>::from_u32(prop_type)
+        let prop_type = <DataType as FromPrimitive>::from_u32(prop_type)
             .ok_or(TdmsReaderError::UnknownPropertyType(prop_type))?;
         Ok(prop_type)
     }
@@ -109,16 +110,16 @@ impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, DataTypeRaw> for TdmsR
 
 impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, PropertyValue> for TdmsReader<'r, O, R> {
     fn read_value(&mut self) -> Result<PropertyValue> {
-        let raw_type: DataTypeRaw = self.read_value()?;
+        let raw_type: DataType = self.read_value()?;
 
         match raw_type {
-            DataTypeRaw::I32 => Ok(PropertyValue::I32(self.read_value()?)),
-            DataTypeRaw::U32 => Ok(PropertyValue::U32(self.read_value()?)),
-            DataTypeRaw::U64 => Ok(PropertyValue::U64(self.read_value()?)),
-            DataTypeRaw::DoubleFloat | DataTypeRaw::DoubleFloatWithUnit => {
+            DataType::I32 => Ok(PropertyValue::I32(self.read_value()?)),
+            DataType::U32 => Ok(PropertyValue::U32(self.read_value()?)),
+            DataType::U64 => Ok(PropertyValue::U64(self.read_value()?)),
+            DataType::DoubleFloat | DataType::DoubleFloatWithUnit => {
                 Ok(PropertyValue::Double(self.read_value()?))
             }
-            DataTypeRaw::TdmsString => Ok(PropertyValue::String(self.read_value()?)),
+            DataType::TdmsString => Ok(PropertyValue::String(self.read_value()?)),
             _ => Err(TdmsReaderError::UnsupportedType(raw_type)),
         }
     }

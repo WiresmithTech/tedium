@@ -163,7 +163,8 @@ mod test {
 
     use byteorder::{BigEndian, WriteBytesExt};
 
-    use crate::meta_data::{DataTypeRaw, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
+    use crate::data_types::DataType;
+    use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, ToC};
 
     use super::*;
 
@@ -182,7 +183,7 @@ mod test {
                     path: "group/ch1".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -191,7 +192,7 @@ mod test {
                     path: "group/ch2".to_string(),
                     properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataTypeRaw::DoubleFloat,
+                        data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
@@ -223,12 +224,12 @@ mod test {
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },
                 RawDataMeta {
-                    data_type: DataTypeRaw::DoubleFloat,
+                    data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
                     total_size_bytes: None,
                 },

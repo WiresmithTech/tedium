@@ -7,41 +7,13 @@
 use std::io::{Read, Seek};
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
-use num_derive::FromPrimitive;
 
 use crate::data_reader::{TdmsDataReader, TdmsReader, TdmsReaderError};
+use crate::data_types::DataType;
 
 ///The fixed byte size of the lead in section.
 pub const LEAD_IN_BYTES: u64 = 28;
 
-/// The DataTypeRaw enum's values match the binary representation of that
-/// type in tdms files.
-#[derive(Clone, Copy, Debug, FromPrimitive, PartialEq, Eq)]
-#[repr(u32)]
-pub enum DataTypeRaw {
-    Void = 0,
-    I8 = 1,
-    I16 = 2,
-    I32 = 3,
-    I64 = 4,
-    U8 = 5,
-    U16 = 6,
-    U32 = 7,
-    U64 = 8,
-    SingleFloat = 9,
-    DoubleFloat = 10,
-    ExtendedFloat = 11,
-    SingleFloatWithUnit = 0x19,
-    DoubleFloatWithUnit = 12,
-    ExtendedFloatWithUnit = 13,
-    TdmsString = 0x20,
-    Boolean = 0x21,
-    TimeStamp = 0x44,
-    FixedPoint = 0x4F,
-    ComplexSingleFloat = 0x0008_000c,
-    ComplexDoubleFloat = 0x0010_000d,
-    DAQmxRawData = 0xFFFF_FFFF,
-}
 /*/
 impl DataTypeRaw {
     /// Convert a raw u32 value into a DataTypeRaw enum
@@ -249,7 +221,7 @@ impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, RawDataIndex> for TdmsReader<'
             0x69120000..=0x6912FFFF => todo!(), // daqmx 1
             0x69130000..=0x6913FFFF => todo!(), //daqmx 2
             _ => {
-                let data_type: DataTypeRaw = self.read_value()?;
+                let data_type: DataType = self.read_value()?;
                 let _array_dims: u32 = self.read_value()?; //always 1.
                 let number_of_values: u64 = self.read_value()?;
                 let meta = RawDataMeta {
@@ -267,7 +239,7 @@ impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, RawDataIndex> for TdmsReader<'
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RawDataMeta {
-    pub data_type: DataTypeRaw,
+    pub data_type: DataType,
     pub number_of_values: u64,
     /// Only if strings
     pub total_size_bytes: Option<u64>,
@@ -339,7 +311,7 @@ mod tests {
                 path: String::from("/'Group'/'Channel1'"),
                 properties: vec![],
                 raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataTypeRaw::I32,
+                    data_type: DataType::I32,
                     number_of_values: 2,
                     total_size_bytes: None,
                 }),
