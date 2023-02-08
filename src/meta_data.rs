@@ -6,36 +6,11 @@
 
 use std::io::{Read, Seek};
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
-
-use crate::data_reader::{TdmsDataReader, TdmsReader, TdmsReaderError};
-use crate::data_types::DataType;
+use crate::data_reader::{BigEndianReader, LittleEndianReader, TdmsReader, TdmsReaderError};
+use crate::data_types::{DataType, TdmsMetaData, TdmsStorageType};
 
 ///The fixed byte size of the lead in section.
 pub const LEAD_IN_BYTES: u64 = 28;
-
-/*/
-impl DataTypeRaw {
-    /// Convert a raw u32 value into a DataTypeRaw enum
-    pub fn from_u32(raw_id: u32) -> Result<DataTypeRaw> {
-        FromPrimitive::from_u32(raw_id).ok_or(TdmsError::UnknownDataType(raw_id))
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct TimeStamp {
-    pub epoch: i64,
-    pub radix: u64,
-}
-
-impl fmt::Display for TimeStamp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{}\t{}", self.epoch, self.radix)?;
-
-        Ok(())
-    }
-}
-*/
 
 /// A wrapper type for data types found in tdms files
 #[derive(Debug, Clone, PartialEq)]
@@ -93,10 +68,9 @@ impl ToC {
     }
 }
 
-impl<'r, O: byteorder::ByteOrder, R: ReadBytesExt> TdmsDataReader<O, ToC> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<ToC, TdmsReaderError> {
-        //ToC is always
-        let toc_value = self.inner.read_u32::<LittleEndian>()?;
+impl TdmsMetaData for ToC {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsReaderError> {
+        let toc_value = <u32 as TdmsStorageType>::read_le(reader.buffered_reader())?;
         Ok(ToC::from_u32(toc_value))
     }
 }
@@ -129,9 +103,7 @@ impl SegmentMetaData {
         LEAD_IN_BYTES + self.next_segment_offset
     }
 
-    pub fn read(
-        reader: &mut (impl ReadBytesExt + Seek),
-    ) -> Result<SegmentMetaData, TdmsReaderError> {
+    pub fn read(reader: &mut (impl Read + Seek)) -> Result<SegmentMetaData, TdmsReaderError> {
         let mut tag = [0u8; 4];
         reader.read_exact(&mut tag)?;
 
@@ -139,34 +111,16 @@ impl SegmentMetaData {
             return Err(TdmsReaderError::HeaderPatternNotMatched(tag));
         }
 
-        let toc = ToC::from_u32(reader.read_u32::<LittleEndian>()?);
+        //ToC is always little endian.
+        let mut buf = [0u8; 4];
+        reader.read_exact(&mut buf)?;
+        let toc = ToC::from_u32(u32::from_le_bytes(buf));
 
         let segment = match toc.big_endian {
-            true => TdmsReader::<BigEndian, _>::from_reader(reader).read_segment(toc)?,
-            false => TdmsReader::<LittleEndian, _>::from_reader(reader).read_segment(toc)?,
+            true => BigEndianReader::from_reader(reader).read_segment(toc)?,
+            false => LittleEndianReader::from_reader(reader).read_segment(toc)?,
         };
         Ok(segment)
-    }
-}
-
-//Add to reader as custom function as prototype doesn't match generic value
-impl<'r, O: ByteOrder, R: Read> TdmsReader<'r, O, R> {
-    /// Called immediately after ToC has been read so we have determined the endianess.
-    pub fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData, TdmsReaderError> {
-        let _version: u32 = self.read_value()?;
-        let next_segment_offset = self.read_value()?;
-        let raw_data_offset = self.read_value()?;
-
-        //todo handle no meta data mode.
-        let object_length: u32 = self.read_value()?;
-        let objects = self.read_vec(object_length as usize)?;
-
-        Ok(SegmentMetaData {
-            toc: toc,
-            next_segment_offset,
-            raw_data_offset,
-            objects,
-        })
     }
 }
 
@@ -180,19 +134,21 @@ pub struct ObjectMetaData {
     pub raw_data_index: RawDataIndex,
 }
 
-impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, ObjectMetaData> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<ObjectMetaData, TdmsReaderError> {
-        let path: String = self.read_value()?;
+impl TdmsMetaData for ObjectMetaData {
+    fn read<R: Read + Seek>(
+        reader: &mut impl TdmsReader<R>,
+    ) -> Result<ObjectMetaData, TdmsReaderError> {
+        let path: String = reader.read_value()?;
 
-        let raw_data: RawDataIndex = self.read_value()?;
+        let raw_data: RawDataIndex = reader.read_meta()?;
 
-        let property_count: u32 = self.read_value()?;
+        let property_count: u32 = reader.read_value()?;
 
         let mut properties = Vec::with_capacity(property_count as usize);
 
         for _prop in 0..property_count {
-            let name: String = self.read_value()?;
-            let value: PropertyValue = self.read_value()?;
+            let name: String = reader.read_value()?;
+            let value: PropertyValue = reader.read_meta()?;
             properties.push((name, value));
         }
 
@@ -211,9 +167,11 @@ pub enum RawDataIndex {
     RawData(RawDataMeta),
 }
 
-impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, RawDataIndex> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<RawDataIndex, TdmsReaderError> {
-        let raw_index: u32 = self.read_value()?;
+impl TdmsMetaData for RawDataIndex {
+    fn read<R: Read + Seek>(
+        reader: &mut impl TdmsReader<R>,
+    ) -> Result<RawDataIndex, TdmsReaderError> {
+        let raw_index: u32 = reader.read_value()?;
 
         let raw_data = match raw_index {
             0x0000_0000 => RawDataIndex::MatchPrevious,
@@ -221,9 +179,9 @@ impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, RawDataIndex> for TdmsReader<'
             0x69120000..=0x6912FFFF => todo!(), // daqmx 1
             0x69130000..=0x6913FFFF => todo!(), //daqmx 2
             _ => {
-                let data_type: DataType = self.read_value()?;
-                let _array_dims: u32 = self.read_value()?; //always 1.
-                let number_of_values: u64 = self.read_value()?;
+                let data_type: DataType = reader.read_meta()?;
+                let _array_dims: u32 = reader.read_value()?; //always 1.
+                let number_of_values: u64 = reader.read_value()?;
                 let meta = RawDataMeta {
                     data_type,
                     number_of_values,
@@ -291,7 +249,7 @@ mod tests {
         ];
 
         let mut cursor = Cursor::new(test_buffer);
-        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
+        let mut reader = LittleEndianReader::from_reader(&mut cursor);
         let object_count: u32 = reader.read_value().unwrap();
         let objects: Vec<ObjectMetaData> = reader.read_vec(object_count as usize).unwrap();
 
@@ -335,8 +293,9 @@ mod tests {
         ];
 
         let mut cursor = Cursor::new(test_buffer);
-        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
+        let mut reader = LittleEndianReader::from_reader(&mut cursor);
         let length: u32 = reader.read_value().unwrap();
+        println!("length: {length}");
         let objects: Vec<ObjectMetaData> = reader.read_vec(length as usize).unwrap();
 
         let expected = vec![

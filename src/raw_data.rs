@@ -1,11 +1,12 @@
 //! Holds the capabilites for accessing the raw data blocks.
 
-use std::{io::Seek, marker::PhantomData};
-
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
+use std::{
+    io::{Read, Seek},
+    marker::PhantomData,
+};
 
 use crate::{
-    data_reader::{TdmsDataReader, TdmsReader},
+    data_reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     error::TdmsError,
     meta_data::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
 };
@@ -67,7 +68,7 @@ impl DataBlock {
     pub fn read(
         &self,
         channel_index: usize,
-        reader: &mut (impl ReadBytesExt + Seek),
+        reader: &mut (impl Read + Seek),
         output: &mut [f64],
     ) -> Result<usize, TdmsError> {
         //first is element size, second is total size.
@@ -95,44 +96,44 @@ impl DataBlock {
         };
 
         match self.byte_order {
-            Endianess::Big => BlockReader::<_, BigEndian>::new(
+            Endianess::Big => BlockReader::<_, _>::new(
                 self.start + start_offset,
                 step,
                 self.channels[channel_index].number_of_values,
-                TdmsReader::from_reader(reader),
+                BigEndianReader::from_reader(reader),
             )?
             .read(output),
-            Endianess::Little => BlockReader::<_, LittleEndian>::new(
+            Endianess::Little => BlockReader::<_, _>::new(
                 self.start + start_offset,
                 step,
                 self.channels[channel_index].number_of_values,
-                TdmsReader::from_reader(reader),
+                LittleEndianReader::from_reader(reader),
             )?
             .read(output),
         }
     }
 }
 
-struct BlockReader<'a, R: ReadBytesExt + Seek, O: ByteOrder> {
+struct BlockReader<R: Read + Seek, T: TdmsReader<R>> {
     step_bytes: i64,
     samples: u64,
-    reader: TdmsReader<'a, O, R>,
-    _order: PhantomData<O>,
+    reader: T,
+    _marker: PhantomData<R>,
 }
 
-impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> BlockReader<'a, R, O> {
+impl<R: Read + Seek, T: TdmsReader<R>> BlockReader<R, T> {
     fn new(
         start_bytes: u64,
         step_bytes: u64,
         samples: u64,
-        mut reader: TdmsReader<'a, O, R>,
+        mut reader: T,
     ) -> Result<Self, TdmsError> {
         reader.to_file_position(start_bytes)?;
         Ok(Self {
             step_bytes: step_bytes as i64,
             samples,
             reader,
-            _order: PhantomData,
+            _marker: PhantomData,
         })
     }
 
@@ -159,9 +160,7 @@ impl<'a, R: ReadBytesExt + Seek, O: ByteOrder> BlockReader<'a, R, O> {
 
 #[cfg(test)]
 mod test {
-    use std::io::Cursor;
-
-    use byteorder::{BigEndian, WriteBytesExt};
+    use std::io::{Cursor, Write};
 
     use crate::data_types::DataType;
     use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, ToC};
@@ -275,7 +274,7 @@ mod test {
         let mut cursor = Cursor::new(buffer);
         for index in 0..100 {
             let value = index as f64;
-            cursor.write_f64::<BigEndian>(value).unwrap();
+            cursor.write(&value.to_be_bytes()).unwrap();
         }
         cursor
     }
@@ -285,8 +284,7 @@ mod test {
         let mut buffer = create_test_buffer();
 
         let reader =
-            BlockReader::<_, BigEndian>::new(0, 0, 3, TdmsReader::from_reader(&mut buffer))
-                .unwrap();
+            BlockReader::<_, _>::new(0, 0, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
         let output: Vec<f64> = reader.read_vec().unwrap();
         assert_eq!(output, vec![0.0, 1.0, 2.0]);
     }
@@ -296,8 +294,7 @@ mod test {
         let mut buffer = create_test_buffer();
 
         let reader =
-            BlockReader::<_, BigEndian>::new(16, 0, 3, TdmsReader::from_reader(&mut buffer))
-                .unwrap();
+            BlockReader::<_, _>::new(16, 0, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
         let output: Vec<f64> = reader.read_vec().unwrap();
         assert_eq!(output, vec![2.0, 3.0, 4.0]);
     }
@@ -307,8 +304,7 @@ mod test {
         let mut buffer = create_test_buffer();
 
         let reader =
-            BlockReader::<_, BigEndian>::new(0, 8, 3, TdmsReader::from_reader(&mut buffer))
-                .unwrap();
+            BlockReader::<_, _>::new(0, 8, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
         let output: Vec<f64> = reader.read_vec().unwrap();
         assert_eq!(output, vec![0.0, 2.0, 4.0]);
     }
@@ -318,8 +314,7 @@ mod test {
         let mut buffer = create_test_buffer();
 
         let reader =
-            BlockReader::<_, BigEndian>::new(16, 8, 3, TdmsReader::from_reader(&mut buffer))
-                .unwrap();
+            BlockReader::<_, _>::new(16, 8, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
         let output: Vec<f64> = reader.read_vec().unwrap();
         assert_eq!(output, vec![2.0, 4.0, 6.0]);
     }

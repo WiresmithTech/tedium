@@ -1,9 +1,13 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
 //!
-use std::io::Read;
+use std::io::{Read, Seek};
 
 use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+
+use crate::data_reader::{TdmsReader, TdmsReaderError};
+
 /// The DataTypeRaw enum's values match the binary representation of that
 /// type in tdms files.
 #[derive(Clone, Copy, Debug, FromPrimitive, PartialEq, Eq)]
@@ -33,44 +37,18 @@ pub enum DataType {
     DAQmxRawData = 0xFFFF_FFFF,
 }
 
-type IoError<T> = Result<T, std::io::Error>;
-
-trait TdmsStorageType: Sized {
+pub trait TdmsStorageType: Sized {
     const SUPPORTED_TYPES: &'static [DataType];
-    fn read_le(reader: &mut impl Read) -> IoError<Self>;
-    fn read_be(reader: &mut impl Read) -> IoError<Self>;
+    fn read_le(reader: &mut impl Read) -> Result<Self, TdmsReaderError>;
+    fn read_be(reader: &mut impl Read) -> Result<Self, TdmsReaderError>;
     fn supports_data_type(data_type: &DataType) -> bool {
         Self::SUPPORTED_TYPES.contains(&data_type)
     }
 }
 
-trait OrderedReader<'r, R: Read> {
-    fn from_reader(reader: &'r mut R) -> Self;
-    fn read_value<T: TdmsStorageType>(&mut self) -> IoError<T>;
-}
-
-struct LittleEndianReader<'r, R: Read>(&'r mut R);
-
-impl<'r, R: Read> OrderedReader<'r, R> for LittleEndianReader<'r, R> {
-    fn read_value<T: TdmsStorageType>(&mut self) -> IoError<T> {
-        T::read_le(self.0)
-    }
-
-    fn from_reader(reader: &'r mut R) -> Self {
-        Self(reader)
-    }
-}
-
-struct BigEndianReader<'r, R>(&'r mut R);
-
-impl<'r, R: Read> OrderedReader<'r, R> for BigEndianReader<'r, R> {
-    fn read_value<T: TdmsStorageType>(&mut self) -> IoError<T> {
-        T::read_be(self.0)
-    }
-
-    fn from_reader(reader: &'r mut R) -> Self {
-        Self(reader)
-    }
+/// Represents data that is endian agnostic.
+pub trait TdmsMetaData: Sized {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsReaderError>;
 }
 
 /// Macro for scripting the wrapping of the different read methods.
@@ -81,12 +59,12 @@ macro_rules! numeric_type {
     ($type:ty, $supported:expr) => {
         impl TdmsStorageType for $type {
             const SUPPORTED_TYPES: &'static [DataType] = $supported;
-            fn read_le(reader: &mut impl Read) -> IoError<$type> {
+            fn read_le(reader: &mut impl Read) -> Result<$type, TdmsReaderError> {
                 let mut buf = [0u8; std::mem::size_of::<$type>()];
                 reader.read_exact(&mut buf)?;
                 Ok(<$type>::from_le_bytes(buf))
             }
-            fn read_be(reader: &mut impl Read) -> IoError<$type> {
+            fn read_be(reader: &mut impl Read) -> Result<$type, TdmsReaderError> {
                 let mut buf = [0u8; std::mem::size_of::<$type>()];
                 reader.read_exact(&mut buf)?;
                 Ok(<$type>::from_be_bytes(buf))
@@ -100,9 +78,40 @@ numeric_type!(u32, &[DataType::U32]);
 numeric_type!(u64, &[DataType::U64]);
 numeric_type!(f64, &[DataType::DoubleFloat, DataType::DoubleFloatWithUnit]);
 
+fn read_string_with_length(reader: &mut impl Read, length: u32) -> Result<String, TdmsReaderError> {
+    let mut buffer = vec![0; length as usize];
+    reader.read_exact(&mut buffer[..])?;
+    let value = String::from_utf8(buffer)?;
+    Ok(value)
+}
+
+impl TdmsStorageType for String {
+    const SUPPORTED_TYPES: &'static [DataType] = &[DataType::TdmsString];
+
+    fn read_le(reader: &mut impl Read) -> Result<Self, TdmsReaderError> {
+        let length = u32::read_le(reader)?;
+        read_string_with_length(reader, length)
+    }
+
+    fn read_be(reader: &mut impl Read) -> Result<Self, TdmsReaderError> {
+        let length = u32::read_be(reader)?;
+        read_string_with_length(reader, length)
+    }
+}
+
+impl TdmsMetaData for DataType {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsReaderError> {
+        let prop_type: u32 = reader.read_value()?;
+        let prop_type = <DataType as FromPrimitive>::from_u32(prop_type)
+            .ok_or(TdmsReaderError::UnknownPropertyType(prop_type))?;
+        Ok(prop_type)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_reader::{BigEndianReader, LittleEndianReader};
     use std::io::Cursor;
     /// Tests the conversion against the le and be version for the value specified.
     macro_rules! test_formatting {

@@ -2,17 +2,15 @@
 //!
 //! Also contains a TdmsDataReader trait for extending the reader with new data types.
 
-use byteorder::{ByteOrder, ReadBytesExt};
-use num_traits::FromPrimitive;
-use std::{
-    io::{BufReader, Read, Seek},
-    marker::PhantomData,
-};
+use std::io::{BufReader, Read, Seek};
 use thiserror::Error;
 
-use crate::meta_data::PropertyValue;
+use crate::meta_data::{PropertyValue, ToC};
+use crate::{
+    data_types::{DataType, TdmsMetaData, TdmsStorageType},
+    meta_data::SegmentMetaData,
+};
 
-use crate::data_types::DataType;
 #[derive(Error, Debug)]
 pub enum TdmsReaderError {
     #[error("IO Error")]
@@ -27,99 +25,97 @@ pub enum TdmsReaderError {
     HeaderPatternNotMatched([u8; 4]),
 }
 
-type Result<T> = std::result::Result<T, TdmsReaderError>;
-
-/// Wraps a reader with a byte order for binary reads.
-pub struct TdmsReader<'r, O: ByteOrder, R: ReadBytesExt> {
-    pub inner: BufReader<&'r mut R>,
-    _order: PhantomData<O>,
-}
-
-impl<'r, O: ByteOrder, R: ReadBytesExt + Seek> TdmsReader<'r, O, R> {
-    pub fn from_reader(reader: &'r mut R) -> Self {
-        Self {
-            inner: BufReader::new(reader),
-            _order: PhantomData,
-        }
+pub trait TdmsReader<R: Read + Seek>: Sized {
+    fn from_reader(reader: R) -> Self;
+    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsReaderError>;
+    fn read_meta<T: TdmsMetaData>(&mut self) -> Result<T, TdmsReaderError> {
+        T::read(self)
     }
+    fn read_vec<T: TdmsMetaData>(&mut self, length: usize) -> Result<Vec<T>, TdmsReaderError> {
+        let mut vec = Vec::with_capacity(length);
+        for _ in 0..length {
+            vec.push(self.read_meta()?);
+        }
+        Ok(vec)
+    }
+    fn buffered_reader(&mut self) -> &mut BufReader<R>;
 
     /// Move to an absolute position in the file.
-    pub fn to_file_position(&mut self, position: u64) -> Result<()> {
-        self.inner.seek(std::io::SeekFrom::Start(position))?;
+    fn to_file_position(&mut self, position: u64) -> Result<(), TdmsReaderError> {
+        self.buffered_reader()
+            .seek(std::io::SeekFrom::Start(position))?;
         Ok(())
     }
 
     /// Move relative to the current file position.
-    pub fn move_position(&mut self, offset: i64) -> Result<()> {
-        self.inner.seek_relative(offset)?;
+    fn move_position(&mut self, offset: i64) -> Result<(), TdmsReaderError> {
+        self.buffered_reader().seek_relative(offset)?;
         Ok(())
     }
-}
 
-pub trait TdmsDataReader<O, T> {
-    fn read_value(&mut self) -> Result<T>;
-    fn read_vec(&mut self, length: usize) -> Result<Vec<T>> {
-        let mut values = Vec::with_capacity(length as usize);
+    /// Called immediately after ToC has been read so we have determined the endianess.
+    fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData, TdmsReaderError> {
+        let _version: u32 = self.read_value()?;
+        let next_segment_offset = self.read_value()?;
+        let raw_data_offset = self.read_value()?;
 
-        for _ in 0..length {
-            values.push(self.read_value()?);
-        }
+        //todo handle no meta data mode.
+        let object_length: u32 = self.read_value()?;
+        let objects = self.read_vec(object_length as usize)?;
 
-        Ok(values)
+        Ok(SegmentMetaData {
+            toc: toc,
+            next_segment_offset,
+            raw_data_offset,
+            objects,
+        })
     }
 }
 
-/// Macro for scripting the wrapping of the different read methods.
-///
-/// Should provide the type and the methods will be created with the type name.
-macro_rules! read_type {
-    ($type:ty) => {
-        impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, $type> for TdmsReader<'r, O, R> {
-            paste::item! {
-            fn read_value (&mut self) -> Result<$type> {
-                Ok(self.inner.[<read_ $type>]::<O>()?)
-            }
-            }
-        }
-    };
-}
+pub struct LittleEndianReader<R: Read>(BufReader<R>);
 
-read_type!(i32);
-read_type!(u32);
-read_type!(u64);
-read_type!(f64);
+impl<R: Read + Seek> TdmsReader<R> for LittleEndianReader<R> {
+    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsReaderError> {
+        T::read_le(&mut self.0)
+    }
 
-impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, String> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<String> {
-        let length: u32 = self.read_value()?;
-        let mut buffer = vec![0; length as usize];
-        self.inner.read_exact(&mut buffer[..])?;
-        let value = String::from_utf8(buffer)?;
-        Ok(value)
+    fn from_reader(reader: R) -> Self {
+        Self(BufReader::new(reader))
+    }
+
+    fn buffered_reader(&mut self) -> &mut BufReader<R> {
+        &mut self.0
     }
 }
 
-impl<'r, O: ByteOrder, R: ReadBytesExt> TdmsDataReader<O, DataType> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<DataType> {
-        let prop_type: u32 = self.read_value()?;
-        let prop_type = <DataType as FromPrimitive>::from_u32(prop_type)
-            .ok_or(TdmsReaderError::UnknownPropertyType(prop_type))?;
-        Ok(prop_type)
+pub struct BigEndianReader<R: Read>(BufReader<R>);
+
+impl<R: Read + Seek> TdmsReader<R> for BigEndianReader<R> {
+    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsReaderError> {
+        T::read_be(&mut self.0)
+    }
+
+    fn from_reader(reader: R) -> Self {
+        Self(BufReader::new(reader))
+    }
+
+    fn buffered_reader(&mut self) -> &mut BufReader<R> {
+        &mut self.0
     }
 }
 
-impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, PropertyValue> for TdmsReader<'r, O, R> {
-    fn read_value(&mut self) -> Result<PropertyValue> {
-        let raw_type: DataType = self.read_value()?;
+impl TdmsMetaData for PropertyValue {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsReaderError> {
+        let raw_type: DataType = reader.read_meta()?;
 
         match raw_type {
-            DataType::I32 => Ok(PropertyValue::I32(self.read_value()?)),
-            DataType::U32 => Ok(PropertyValue::U32(self.read_value()?)),
-            DataType::U64 => Ok(PropertyValue::U64(self.read_value()?)),
+            DataType::I32 => Ok(PropertyValue::I32(reader.read_value()?)),
+            DataType::U32 => Ok(PropertyValue::U32(reader.read_value()?)),
+            DataType::U64 => Ok(PropertyValue::U64(reader.read_value()?)),
             DataType::DoubleFloat | DataType::DoubleFloatWithUnit => {
-                Ok(PropertyValue::Double(self.read_value()?))
+                Ok(PropertyValue::Double(reader.read_value()?))
             }
-            DataType::TdmsString => Ok(PropertyValue::String(self.read_value()?)),
+            DataType::TdmsString => Ok(PropertyValue::String(reader.read_value()?)),
             _ => Err(TdmsReaderError::UnsupportedType(raw_type)),
         }
     }
@@ -129,7 +125,6 @@ impl<'r, O: ByteOrder, R: Read> TdmsDataReader<O, PropertyValue> for TdmsReader<
 mod tests {
 
     use super::*;
-    use byteorder::{BigEndian, LittleEndian};
     use std::io::Cursor;
 
     /// Tests the conversion against the le and be version for the value specified.
@@ -141,7 +136,7 @@ mod tests {
                     let original_value: $type = $test_value;
                     let bytes = original_value.to_le_bytes();
                     let mut reader = Cursor::new(bytes);
-                    let mut tdms_reader = TdmsReader::<LittleEndian,_>::from_reader(&mut reader);
+                    let mut tdms_reader = LittleEndianReader::from_reader(&mut reader);
                     let read_value: $type = tdms_reader.read_value().unwrap();
                     assert_eq!(read_value, original_value);
                 }
@@ -151,7 +146,7 @@ mod tests {
                     let original_value: $type = $test_value;
                     let bytes = original_value.to_be_bytes();
                     let mut reader = Cursor::new(bytes);
-                    let mut tdms_reader = TdmsReader::<BigEndian,_>::from_reader(&mut reader);
+                    let mut tdms_reader = BigEndianReader::from_reader(&mut reader);
                     let read_value: $type = tdms_reader.read_value().unwrap();
                     assert_eq!(read_value, original_value);
                 }
@@ -172,7 +167,7 @@ mod tests {
             0x61, 0x20, 0x28, 0x56, 0x6F, 0x6C, 0x74, 0x73, 0x29, 0x27,
         ];
         let mut cursor = Cursor::new(test_buffer);
-        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
+        let mut reader = LittleEndianReader::from_reader(&mut cursor);
         let string: String = reader.read_value().unwrap();
         assert_eq!(string, String::from("/'Measured Throughput Data (Volts)'"));
     }
@@ -186,8 +181,8 @@ mod tests {
             0x61, 0x20, 0x28, 0x56, 0x6F, 0x6C, 0x74, 0x73, 0x29, 0x27,
         ];
         let mut cursor = Cursor::new(test_buffer);
-        let mut reader = TdmsReader::<LittleEndian, _>::from_reader(&mut cursor);
-        let result: Result<PropertyValue> = reader.read_value();
+        let mut reader = LittleEndianReader::from_reader(&mut cursor);
+        let result: Result<PropertyValue, TdmsReaderError> = reader.read_meta();
         println!("{result:?}");
         assert!(matches!(
             result,
