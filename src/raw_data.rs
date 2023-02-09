@@ -1,14 +1,15 @@
 //! Holds the capabilites for accessing the raw data blocks.
 
 use std::{
-    io::{Read, Seek},
+    io::{Read, Seek, Write},
     marker::PhantomData,
 };
 
 use crate::{
-    data_reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     error::TdmsError,
-    meta_data::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
+    meta_data::{RawDataIndex, RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
+    reader::{BigEndianReader, LittleEndianReader, TdmsReader},
+    writer::TdmsWriter,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -156,6 +157,11 @@ impl<R: Read + Seek, T: TdmsReader<R>> BlockReader<R, T> {
         self.read(&mut values[..])?;
         Ok(values)
     }
+}
+
+trait WriteBlock {
+    fn data_index() -> Vec<RawDataIndex>;
+    fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError>;
 }
 
 #[cfg(test)]

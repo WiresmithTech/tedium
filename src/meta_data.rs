@@ -6,8 +6,9 @@
 
 use std::io::{Read, Seek};
 
-use crate::data_reader::{BigEndianReader, LittleEndianReader, TdmsReader, TdmsReaderError};
 use crate::data_types::{DataType, TdmsMetaData, TdmsStorageType};
+use crate::error::TdmsError;
+use crate::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
 
 ///The fixed byte size of the lead in section.
 pub const LEAD_IN_BYTES: u64 = 28;
@@ -69,7 +70,7 @@ impl ToC {
 }
 
 impl TdmsMetaData for ToC {
-    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsReaderError> {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError> {
         let toc_value = <u32 as TdmsStorageType>::read_le(reader.buffered_reader())?;
         Ok(ToC::from_u32(toc_value))
     }
@@ -103,12 +104,12 @@ impl SegmentMetaData {
         LEAD_IN_BYTES + self.next_segment_offset
     }
 
-    pub fn read(reader: &mut (impl Read + Seek)) -> Result<SegmentMetaData, TdmsReaderError> {
+    pub fn read(reader: &mut (impl Read + Seek)) -> Result<SegmentMetaData, TdmsError> {
         let mut tag = [0u8; 4];
         reader.read_exact(&mut tag)?;
 
         if tag != [0x54, 0x44, 0x53, 0x6D] {
-            return Err(TdmsReaderError::HeaderPatternNotMatched(tag));
+            return Err(TdmsError::HeaderPatternNotMatched(tag));
         }
 
         //ToC is always little endian.
@@ -135,9 +136,7 @@ pub struct ObjectMetaData {
 }
 
 impl TdmsMetaData for ObjectMetaData {
-    fn read<R: Read + Seek>(
-        reader: &mut impl TdmsReader<R>,
-    ) -> Result<ObjectMetaData, TdmsReaderError> {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<ObjectMetaData, TdmsError> {
         let path: String = reader.read_value()?;
 
         let raw_data: RawDataIndex = reader.read_meta()?;
@@ -168,9 +167,7 @@ pub enum RawDataIndex {
 }
 
 impl TdmsMetaData for RawDataIndex {
-    fn read<R: Read + Seek>(
-        reader: &mut impl TdmsReader<R>,
-    ) -> Result<RawDataIndex, TdmsReaderError> {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<RawDataIndex, TdmsError> {
         let raw_index: u32 = reader.read_value()?;
 
         let raw_data = match raw_index {

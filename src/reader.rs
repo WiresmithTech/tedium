@@ -3,35 +3,21 @@
 //! Also contains a TdmsDataReader trait for extending the reader with new data types.
 
 use std::io::{BufReader, Read, Seek};
-use thiserror::Error;
 
+use crate::error::TdmsError;
 use crate::meta_data::{PropertyValue, ToC};
 use crate::{
     data_types::{DataType, TdmsMetaData, TdmsStorageType},
     meta_data::SegmentMetaData,
 };
 
-#[derive(Error, Debug)]
-pub enum TdmsReaderError {
-    #[error("IO Error")]
-    IoError(#[from] std::io::Error),
-    #[error("String formatting error")]
-    StringFormatError(#[from] std::string::FromUtf8Error),
-    #[error("Unknown Property Type: {0:X}")]
-    UnknownPropertyType(u32),
-    #[error("Unsupported Property Type: {0:?}")]
-    UnsupportedType(DataType),
-    #[error("Attempted to read header where no header exists. Bytes: {0:X?}")]
-    HeaderPatternNotMatched([u8; 4]),
-}
-
 pub trait TdmsReader<R: Read + Seek>: Sized {
     fn from_reader(reader: R) -> Self;
-    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsReaderError>;
-    fn read_meta<T: TdmsMetaData>(&mut self) -> Result<T, TdmsReaderError> {
+    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsError>;
+    fn read_meta<T: TdmsMetaData>(&mut self) -> Result<T, TdmsError> {
         T::read(self)
     }
-    fn read_vec<T: TdmsMetaData>(&mut self, length: usize) -> Result<Vec<T>, TdmsReaderError> {
+    fn read_vec<T: TdmsMetaData>(&mut self, length: usize) -> Result<Vec<T>, TdmsError> {
         let mut vec = Vec::with_capacity(length);
         for _ in 0..length {
             vec.push(self.read_meta()?);
@@ -41,20 +27,20 @@ pub trait TdmsReader<R: Read + Seek>: Sized {
     fn buffered_reader(&mut self) -> &mut BufReader<R>;
 
     /// Move to an absolute position in the file.
-    fn to_file_position(&mut self, position: u64) -> Result<(), TdmsReaderError> {
+    fn to_file_position(&mut self, position: u64) -> Result<(), TdmsError> {
         self.buffered_reader()
             .seek(std::io::SeekFrom::Start(position))?;
         Ok(())
     }
 
     /// Move relative to the current file position.
-    fn move_position(&mut self, offset: i64) -> Result<(), TdmsReaderError> {
+    fn move_position(&mut self, offset: i64) -> Result<(), TdmsError> {
         self.buffered_reader().seek_relative(offset)?;
         Ok(())
     }
 
     /// Called immediately after ToC has been read so we have determined the endianess.
-    fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData, TdmsReaderError> {
+    fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData, TdmsError> {
         let _version: u32 = self.read_value()?;
         let next_segment_offset = self.read_value()?;
         let raw_data_offset = self.read_value()?;
@@ -75,7 +61,7 @@ pub trait TdmsReader<R: Read + Seek>: Sized {
 pub struct LittleEndianReader<R: Read>(BufReader<R>);
 
 impl<R: Read + Seek> TdmsReader<R> for LittleEndianReader<R> {
-    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsReaderError> {
+    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsError> {
         T::read_le(&mut self.0)
     }
 
@@ -91,7 +77,7 @@ impl<R: Read + Seek> TdmsReader<R> for LittleEndianReader<R> {
 pub struct BigEndianReader<R: Read>(BufReader<R>);
 
 impl<R: Read + Seek> TdmsReader<R> for BigEndianReader<R> {
-    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsReaderError> {
+    fn read_value<T: TdmsStorageType>(&mut self) -> Result<T, TdmsError> {
         T::read_be(&mut self.0)
     }
 
@@ -105,7 +91,7 @@ impl<R: Read + Seek> TdmsReader<R> for BigEndianReader<R> {
 }
 
 impl TdmsMetaData for PropertyValue {
-    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsReaderError> {
+    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError> {
         let raw_type: DataType = reader.read_meta()?;
 
         match raw_type {
@@ -116,7 +102,7 @@ impl TdmsMetaData for PropertyValue {
                 Ok(PropertyValue::Double(reader.read_value()?))
             }
             DataType::TdmsString => Ok(PropertyValue::String(reader.read_value()?)),
-            _ => Err(TdmsReaderError::UnsupportedType(raw_type)),
+            _ => Err(TdmsError::UnsupportedType(raw_type)),
         }
     }
 }
@@ -182,11 +168,8 @@ mod tests {
         ];
         let mut cursor = Cursor::new(test_buffer);
         let mut reader = LittleEndianReader::from_reader(&mut cursor);
-        let result: Result<PropertyValue, TdmsReaderError> = reader.read_meta();
+        let result: Result<PropertyValue, TdmsError> = reader.read_meta();
         println!("{result:?}");
-        assert!(matches!(
-            result,
-            Err(TdmsReaderError::UnknownPropertyType(0x23))
-        ));
+        assert!(matches!(result, Err(TdmsError::UnknownPropertyType(0x23))));
     }
 }

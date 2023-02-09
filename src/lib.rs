@@ -1,9 +1,10 @@
-mod data_reader;
 mod data_types;
 mod error;
 mod index;
 mod meta_data;
 mod raw_data;
+mod reader;
+mod writer;
 
 use std::{
     fs::File,
