@@ -6,8 +6,9 @@ use std::{
 };
 
 use crate::{
+    data_types::TdmsStorageType,
     error::TdmsError,
-    meta_data::{RawDataIndex, RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
+    meta_data::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
     reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     writer::TdmsWriter,
 };
@@ -159,13 +160,32 @@ impl<R: Read + Seek, T: TdmsReader<R>> BlockReader<R, T> {
     }
 }
 
+/// Indicates a set of data that can be written as a binary block to a TDMS file.
 trait WriteBlock {
-    fn data_index() -> Vec<RawDataIndex>;
+    fn data_structure(&self) -> Vec<RawDataMeta>;
     fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError>;
 }
 
+/// Implementation for a data slice of [`TDMSStorageType`] assuming it is a single channel of data.
+impl<'a, D: TdmsStorageType> WriteBlock for [D] {
+    fn data_structure(&self) -> Vec<RawDataMeta> {
+        vec![RawDataMeta {
+            data_type: D::NATURAL_TYPE,
+            number_of_values: self.len() as u64,
+            total_size_bytes: None,
+        }]
+    }
+
+    fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError> {
+        for item in self {
+            writer.write_value(item)?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
-mod test {
+mod read_tests {
     use std::io::{Cursor, Write};
 
     use crate::data_types::DataType;
@@ -323,5 +343,46 @@ mod test {
             BlockReader::<_, _>::new(16, 8, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
         let output: Vec<f64> = reader.read_vec().unwrap();
         assert_eq!(output, vec![2.0, 4.0, 6.0]);
+    }
+}
+
+#[cfg(test)]
+mod write_tests {
+    use crate::{data_types::DataType, writer::LittleEndianWriter};
+
+    use super::*;
+
+    #[test]
+    fn single_channel_writer_generates_meta_data() {
+        let data = vec![0u32; 20];
+        let meta = data[..].data_structure();
+
+        // Although total size isi calculable this is only used for strings.
+        let expected_meta = RawDataMeta {
+            data_type: DataType::U32,
+            number_of_values: 20,
+            total_size_bytes: None,
+        };
+
+        assert_eq!(meta, &[expected_meta]);
+    }
+
+    #[test]
+    fn single_channel_writer_writes_with_endianess() {
+        let data = vec![0u32, 1, 2, 3];
+
+        let mut buf = vec![];
+        {
+            let mut writer = LittleEndianWriter::from_writer(&mut buf);
+            data[..].write(&mut writer).unwrap();
+        }
+
+        assert_eq!(
+            &buf[..],
+            &[
+                0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00,
+                0x00, 0x00
+            ]
+        );
     }
 }
