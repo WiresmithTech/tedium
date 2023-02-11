@@ -8,7 +8,7 @@ use std::{
 use crate::{
     data_types::TdmsStorageType,
     error::TdmsError,
-    meta_data::{RawDataMeta, SegmentMetaData, LEAD_IN_BYTES},
+    meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
     reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     writer::TdmsWriter,
 };
@@ -42,7 +42,7 @@ impl DataBlock {
     /// The full metadata is provided seperately as this may be calculated
     /// from previous segments.
     pub fn from_segment(
-        segment: &SegmentMetaData,
+        segment: &Segment,
         segment_start: u64,
         active_channels_meta: Vec<RawDataMeta>,
     ) -> Self {
@@ -161,7 +161,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> BlockReader<R, T> {
 }
 
 /// Indicates a set of data that can be written as a binary block to a TDMS file.
-trait WriteBlock {
+pub trait WriteBlock {
     fn data_structure(&self) -> Vec<RawDataMeta>;
     fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError>;
 }
@@ -189,40 +189,42 @@ mod read_tests {
     use std::io::{Cursor, Write};
 
     use crate::data_types::DataType;
-    use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, ToC};
+    use crate::meta_data::{MetaData, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
 
     use super::*;
 
-    fn dummy_segment() -> SegmentMetaData {
-        SegmentMetaData {
+    fn dummy_segment() -> Segment {
+        Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: String::from("group"),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: String::from("group"),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         }
     }
 
@@ -231,6 +233,9 @@ mod read_tests {
         let segment = dummy_segment();
 
         let raw_meta = segment
+            .meta_data
+            .as_ref()
+            .unwrap()
             .objects
             .iter()
             .filter_map(|object| {

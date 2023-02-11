@@ -5,11 +5,8 @@
 use std::io::{BufReader, Read, Seek};
 
 use crate::error::TdmsError;
-use crate::meta_data::{PropertyValue, ToC};
-use crate::{
-    data_types::{DataType, TdmsMetaData, TdmsStorageType},
-    meta_data::SegmentMetaData,
-};
+use crate::meta_data::{TdmsMetaData, ToC};
+use crate::{data_types::TdmsStorageType, meta_data::Segment};
 
 pub trait TdmsReader<R: Read + Seek>: Sized {
     fn from_reader(reader: R) -> Self;
@@ -40,20 +37,19 @@ pub trait TdmsReader<R: Read + Seek>: Sized {
     }
 
     /// Called immediately after ToC has been read so we have determined the endianess.
-    fn read_segment(&mut self, toc: ToC) -> Result<SegmentMetaData, TdmsError> {
+    fn read_segment(&mut self, toc: ToC) -> Result<Segment, TdmsError> {
         let _version: u32 = self.read_value()?;
         let next_segment_offset = self.read_value()?;
         let raw_data_offset = self.read_value()?;
 
         //todo handle no meta data mode.
-        let object_length: u32 = self.read_value()?;
-        let objects = self.read_vec(object_length as usize)?;
+        let meta_data = self.read_meta()?;
 
-        Ok(SegmentMetaData {
+        Ok(Segment {
             toc: toc,
             next_segment_offset,
             raw_data_offset,
-            objects,
+            meta_data: Some(meta_data),
         })
     }
 }
@@ -87,23 +83,6 @@ impl<R: Read + Seek> TdmsReader<R> for BigEndianReader<R> {
 
     fn buffered_reader(&mut self) -> &mut BufReader<R> {
         &mut self.0
-    }
-}
-
-impl TdmsMetaData for PropertyValue {
-    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError> {
-        let raw_type: DataType = reader.read_meta()?;
-
-        match raw_type {
-            DataType::I32 => Ok(PropertyValue::I32(reader.read_value()?)),
-            DataType::U32 => Ok(PropertyValue::U32(reader.read_value()?)),
-            DataType::U64 => Ok(PropertyValue::U64(reader.read_value()?)),
-            DataType::DoubleFloat | DataType::DoubleFloatWithUnit => {
-                Ok(PropertyValue::Double(reader.read_value()?))
-            }
-            DataType::TdmsString => Ok(PropertyValue::String(reader.read_value()?)),
-            _ => Err(TdmsError::UnsupportedType(raw_type)),
-        }
     }
 }
 
@@ -156,20 +135,5 @@ mod tests {
         let mut reader = LittleEndianReader::from_reader(&mut cursor);
         let string: String = reader.read_value().unwrap();
         assert_eq!(string, String::from("/'Measured Throughput Data (Volts)'"));
-    }
-
-    #[test]
-    fn test_unknown_property_type() {
-        //example from NI site
-        let test_buffer = [
-            0x23, 00, 00, 00, 0x2Fu8, 0x27, 0x4D, 0x65, 0x61, 0x73, 0x75, 0x72, 0x65, 0x64, 0x20,
-            0x54, 0x68, 0x72, 0x6F, 0x75, 0x67, 0x68, 0x70, 0x75, 0x74, 0x20, 0x44, 0x61, 0x74,
-            0x61, 0x20, 0x28, 0x56, 0x6F, 0x6C, 0x74, 0x73, 0x29, 0x27,
-        ];
-        let mut cursor = Cursor::new(test_buffer);
-        let mut reader = LittleEndianReader::from_reader(&mut cursor);
-        let result: Result<PropertyValue, TdmsError> = reader.read_meta();
-        println!("{result:?}");
-        assert!(matches!(result, Err(TdmsError::UnknownPropertyType(0x23))));
     }
 }

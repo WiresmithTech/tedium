@@ -30,7 +30,7 @@ impl TdmsFile {
         let mut index = Index::new();
 
         loop {
-            let segment = meta_data::SegmentMetaData::read(&mut file).unwrap();
+            let segment = meta_data::Segment::read(&mut file).unwrap();
             let next_segment = index.add_segment(segment);
             if let Err(_) = file.seek(SeekFrom::Start(next_segment)) {
                 break;

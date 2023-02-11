@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use crate::error::TdmsError;
-use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, SegmentMetaData};
+use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, Segment};
 use crate::raw_data::DataBlock;
 
 /// A store for a given channel point to the data block with its data and the index within that.
@@ -127,7 +127,7 @@ impl Index {
     /// Add the data for the next segment read from the file.
     ///
     /// Returns the start position of the next segment.
-    pub fn add_segment(&mut self, segment: SegmentMetaData) -> u64 {
+    pub fn add_segment(&mut self, segment: Segment) -> u64 {
         //Basic procedure.
         //1. If new object list is set, clear active objects.
         //2. Update the active object list - adding new objects or updating properties and data locations for existing objects.
@@ -136,13 +136,15 @@ impl Index {
             self.deactivate_all_objects();
         }
 
-        segment
-            .objects
-            .iter()
-            .for_each(|obj| match obj.raw_data_index {
-                RawDataIndex::None => self.update_meta_object(obj),
-                _ => self.update_or_activate_data_object(obj),
-            });
+        if let Some(meta_data) = &segment.meta_data {
+            meta_data
+                .objects
+                .iter()
+                .for_each(|obj| match obj.raw_data_index {
+                    RawDataIndex::None => self.update_meta_object(obj),
+                    _ => self.update_or_activate_data_object(obj),
+                });
+        }
 
         if segment.toc.contains_raw_data {
             let data_block = DataBlock::from_segment(
@@ -272,6 +274,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use crate::data_types::DataType;
+    use crate::meta_data::MetaData;
     use crate::meta_data::ObjectMetaData;
     use crate::meta_data::PropertyValue;
     use crate::meta_data::RawDataIndex;
@@ -283,35 +286,37 @@ mod tests {
 
     #[test]
     fn test_single_segment() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
 
         let mut index = Index::new();
@@ -353,35 +358,37 @@ mod tests {
 
     #[test]
     fn correctly_generates_the_data_block() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
 
         let mut index = Index::new();
@@ -412,53 +419,57 @@ mod tests {
 
     #[test]
     fn correctly_generates_the_data_block_same_as_previous() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
 
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0xA),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![],
-                    raw_data_index: RawDataIndex::MatchPrevious,
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![],
-                    raw_data_index: RawDataIndex::MatchPrevious,
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                ],
+            }),
         };
         let mut index = Index::new();
         index.add_segment(segment);
@@ -489,53 +500,57 @@ mod tests {
 
     #[test]
     fn correctly_generates_the_data_block_same_as_previous_new_list() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
 
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![],
-                    raw_data_index: RawDataIndex::MatchPrevious,
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![],
-                    raw_data_index: RawDataIndex::MatchPrevious,
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                ],
+            }),
         };
         let mut index = Index::new();
         index.add_segment(segment);
@@ -566,15 +581,17 @@ mod tests {
 
     #[test]
     fn does_not_generate_block_for_meta_only() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0x2),
             next_segment_offset: 20,
             raw_data_offset: 20,
-            objects: vec![ObjectMetaData {
-                path: "group".to_string(),
-                properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                raw_data_index: RawDataIndex::None,
-            }],
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "group".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                }],
+            }),
         };
 
         let mut index = Index::new();
@@ -586,53 +603,57 @@ mod tests {
 
     #[test]
     fn updates_existing_properties() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             // 2 is meta data only.
             toc: ToC::from_u32(0x2),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-52))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::None,
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-52))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                ],
+            }),
         };
 
         let mut index = Index::new();
@@ -654,45 +675,49 @@ mod tests {
     /// This tests the second optimisation on the NI article.
     #[test]
     fn can_update_properties_with_no_changes_to_data_layout() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0xA),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![ObjectMetaData {
-                path: "group/ch1".to_string(),
-                properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
-                raw_data_index: RawDataIndex::MatchPrevious,
-            }],
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
+                    raw_data_index: RawDataIndex::MatchPrevious,
+                }],
+            }),
         };
 
         let mut index = Index::new();
@@ -748,41 +773,43 @@ mod tests {
     /// This tests that the previous active list is maintained with no objects updated.
     #[test]
     fn can_keep_data_with_no_objects_listed() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0xA),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![],
+            meta_data: Some(MetaData { objects: vec![] }),
         };
 
         let mut index = Index::new();
@@ -822,41 +849,43 @@ mod tests {
     /// This tests that the previous active list is maintained with no metadata updated.
     #[test]
     fn can_keep_data_with_no_metadata_in_toc() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0x8),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![],
+            meta_data: Some(MetaData { objects: vec![] }),
         };
 
         let mut index = Index::new();
@@ -895,49 +924,53 @@ mod tests {
 
     #[test]
     fn can_add_channel_to_active_list() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0xA),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![ObjectMetaData {
-                path: "group/ch3".to_string(),
-                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
-                raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataType::DoubleFloat,
-                    number_of_values: 1000,
-                    total_size_bytes: None,
-                }),
-            }],
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "group/ch3".to_string(),
+                    properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataType::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                }],
+            }),
         };
 
         let mut index = Index::new();
@@ -990,49 +1023,53 @@ mod tests {
 
     #[test]
     fn can_replace_the_existing_list() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
         };
-        let segment2 = SegmentMetaData {
+        let segment2 = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![ObjectMetaData {
-                path: "group/ch3".to_string(),
-                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
-                raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataType::DoubleFloat,
-                    number_of_values: 1000,
-                    total_size_bytes: None,
-                }),
-            }],
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "group/ch3".to_string(),
+                    properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataType::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                }],
+            }),
         };
 
         let mut index = Index::new();
@@ -1073,63 +1110,69 @@ mod tests {
 
     #[test]
     fn can_re_add_channel_to_active_list() {
-        let segment = SegmentMetaData {
+        let segment = Segment {
             toc: ToC::from_u32(0xE),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![
-                ObjectMetaData {
-                    path: "group".to_string(),
-                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
-                    raw_data_index: RawDataIndex::None,
-                },
-                ObjectMetaData {
-                    path: "group/ch1".to_string(),
-                    properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
+        };
+        let segment2 = Segment {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "group/ch3".to_string(),
+                    properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
                         data_type: DataType::DoubleFloat,
                         number_of_values: 1000,
                         total_size_bytes: None,
                     }),
-                },
-                ObjectMetaData {
-                    path: "group/ch2".to_string(),
-                    properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
-                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                        data_type: DataType::DoubleFloat,
-                        number_of_values: 1000,
-                        total_size_bytes: None,
-                    }),
-                },
-            ],
+                }],
+            }),
         };
-        let segment2 = SegmentMetaData {
-            toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
-            raw_data_offset: 20,
-            objects: vec![ObjectMetaData {
-                path: "group/ch3".to_string(),
-                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
-                raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataType::DoubleFloat,
-                    number_of_values: 1000,
-                    total_size_bytes: None,
-                }),
-            }],
-        };
-        let segment3 = SegmentMetaData {
+        let segment3 = Segment {
             toc: ToC::from_u32(0xA),
             next_segment_offset: 500,
             raw_data_offset: 20,
-            objects: vec![ObjectMetaData {
-                path: "group/ch1".to_string(),
-                properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
-                raw_data_index: RawDataIndex::RawData(RawDataMeta {
-                    data_type: DataType::DoubleFloat,
-                    number_of_values: 1000,
-                    total_size_bytes: None,
-                }),
-            }],
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "group/ch1".to_string(),
+                    properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
+                    raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                        data_type: DataType::DoubleFloat,
+                        number_of_values: 1000,
+                        total_size_bytes: None,
+                    }),
+                }],
+            }),
         };
 
         let mut index = Index::new();

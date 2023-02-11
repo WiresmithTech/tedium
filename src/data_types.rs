@@ -1,12 +1,11 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
 //!
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Write};
 
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
-use crate::{error::TdmsError, reader::TdmsReader};
+use crate::error::TdmsError;
 
 /// The DataTypeRaw enum's values match the binary representation of that
 /// type in tdms files.
@@ -46,17 +45,14 @@ pub trait TdmsStorageType: Sized {
     const NATURAL_TYPE: DataType;
     fn read_le(reader: &mut impl Read) -> StorageResult<Self>;
     fn read_be(reader: &mut impl Read) -> StorageResult<Self>;
-    fn write_le(&self, writer: &mut impl Write) -> StorageResult<()>;
-    fn write_be(&self, writer: &mut impl Write) -> StorageResult<()>;
+    /// Write the value as little endian and return the number of bytes written.
+    fn write_le(&self, writer: &mut impl Write) -> StorageResult<usize>;
+    /// Write the value as big endian and return the number of bytes written.
+    fn write_be(&self, writer: &mut impl Write) -> StorageResult<usize>;
 
     fn supports_data_type(data_type: &DataType) -> bool {
         Self::SUPPORTED_TYPES.contains(&data_type)
     }
-}
-
-/// Represents data that is endian agnostic.
-pub trait TdmsMetaData: Sized {
-    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError>;
 }
 
 /// Macro for scripting the wrapping of the different read methods.
@@ -79,18 +75,19 @@ macro_rules! numeric_type {
                 reader.read_exact(&mut buf)?;
                 Ok(<$type>::from_be_bytes(buf))
             }
-            fn write_le(&self, writer: &mut impl Write) -> StorageResult<()> {
-                writer.write(&self.to_le_bytes())?;
-                Ok(())
+            fn write_le(&self, writer: &mut impl Write) -> StorageResult<usize> {
+                writer.write_all(&self.to_le_bytes())?;
+                Ok(std::mem::size_of::<$type>())
             }
-            fn write_be(&self, writer: &mut impl Write) -> StorageResult<()> {
-                writer.write(&self.to_be_bytes())?;
-                Ok(())
+            fn write_be(&self, writer: &mut impl Write) -> StorageResult<usize> {
+                writer.write_all(&self.to_be_bytes())?;
+                Ok(std::mem::size_of::<$type>())
             }
         }
     };
 }
 
+numeric_type!(u8, DataType::U8, &[DataType::U8]);
 numeric_type!(i32, DataType::I32, &[DataType::I32]);
 numeric_type!(u32, DataType::U32, &[DataType::U32]);
 numeric_type!(u64, DataType::U64, &[DataType::U64]);
@@ -98,6 +95,11 @@ numeric_type!(
     f64,
     DataType::DoubleFloat,
     &[DataType::DoubleFloat, DataType::DoubleFloatWithUnit]
+);
+numeric_type!(
+    f32,
+    DataType::SingleFloat,
+    &[DataType::SingleFloat, DataType::SingleFloatWithUnit]
 );
 
 fn read_string_with_length(reader: &mut impl Read, length: u32) -> Result<String, TdmsError> {
@@ -122,32 +124,22 @@ impl TdmsStorageType for String {
 
     const NATURAL_TYPE: DataType = DataType::TdmsString;
 
-    fn write_le(&self, writer: &mut impl Write) -> StorageResult<()> {
-        writer.write(&self.len().to_le_bytes())?;
-        writer.write(self.as_bytes())?;
-        Ok(())
+    fn write_le(&self, writer: &mut impl Write) -> StorageResult<usize> {
+        writer.write_all(&(self.len() as u32).to_le_bytes())?;
+        writer.write_all(self.as_bytes())?;
+        Ok(self.len() + std::mem::size_of::<u32>())
     }
 
-    fn write_be(&self, writer: &mut impl Write) -> StorageResult<()> {
-        writer.write(&self.len().to_be_bytes())?;
-        writer.write(self.as_bytes())?;
-        Ok(())
-    }
-}
-
-impl TdmsMetaData for DataType {
-    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError> {
-        let prop_type: u32 = reader.read_value()?;
-        let prop_type = <DataType as FromPrimitive>::from_u32(prop_type)
-            .ok_or(TdmsError::UnknownPropertyType(prop_type))?;
-        Ok(prop_type)
+    fn write_be(&self, writer: &mut impl Write) -> StorageResult<usize> {
+        writer.write_all(&(self.len() as u32).to_be_bytes())?;
+        writer.write_all(self.as_bytes())?;
+        Ok(self.len() + std::mem::size_of::<u32>())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::reader::{BigEndianReader, LittleEndianReader};
+    use crate::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
     use crate::writer::{BigEndianWriter, LittleEndianWriter, TdmsWriter};
     use std::io::Cursor;
     /// Tests the conversion against the le and be version for the value specified.
