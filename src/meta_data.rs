@@ -20,7 +20,9 @@ pub const LEAD_IN_BYTES: u64 = 28;
 pub trait TdmsMetaData: Sized {
     fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError>;
     // Write the piece of meta-data, returning the total size.
-    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<usize, TdmsError>;
+    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<(), TdmsError>;
+    /// Report the size on disk so we can plan the write.
+    fn size(&self) -> usize;
 }
 
 impl TdmsMetaData for DataType {
@@ -31,9 +33,13 @@ impl TdmsMetaData for DataType {
         Ok(prop_type)
     }
 
-    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<usize, TdmsError> {
+    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<(), TdmsError> {
         writer.write_value(&(*self as u32))?;
-        Ok(4)
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        std::mem::size_of::<u32>()
     }
 }
 
@@ -67,10 +73,10 @@ fn write_property_components<W: Write, T: TdmsStorageType>(
     writer: &mut impl TdmsWriter<W>,
     data_type: DataType,
     value: &T,
-) -> Result<usize, TdmsError> {
-    let mut size = writer.write_meta(&data_type)?;
-    size += writer.write_value(value)?;
-    Ok(size)
+) -> Result<(), TdmsError> {
+    writer.write_meta(&data_type)?;
+    writer.write_value(value)?;
+    Ok(())
 }
 
 impl TdmsMetaData for PropertyValue {
@@ -92,7 +98,7 @@ impl TdmsMetaData for PropertyValue {
     fn write<W: std::io::Write>(
         &self,
         writer: &mut impl crate::writer::TdmsWriter<W>,
-    ) -> Result<usize, TdmsError> {
+    ) -> Result<(), TdmsError> {
         match self {
             PropertyValue::I32(value) => write_property_components(writer, DataType::I32, value),
             PropertyValue::U32(value) => write_property_components(writer, DataType::U32, value),
@@ -107,6 +113,18 @@ impl TdmsMetaData for PropertyValue {
                 write_property_components(writer, DataType::TdmsString, value)
             }
         }
+    }
+
+    fn size(&self) -> usize {
+        let internal_size = match self {
+            PropertyValue::I32(value) => value.size(),
+            PropertyValue::U32(value) => value.size(),
+            PropertyValue::U64(value) => value.size(),
+            PropertyValue::Float(value) => value.size(),
+            PropertyValue::Double(value) => value.size(),
+            PropertyValue::String(value) => value.size(),
+        };
+        internal_size + std::mem::size_of::<u32>()
     }
 }
 
@@ -163,12 +181,16 @@ impl TdmsMetaData for ToC {
         Ok(ToC::from_u32(toc_value))
     }
 
-    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<usize, TdmsError> {
+    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<(), TdmsError> {
         let bytes = self.as_bytes();
         for byte in &bytes {
             writer.write_value(byte)?;
         }
-        Ok(4)
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        std::mem::size_of::<u32>()
     }
 }
 
@@ -185,14 +207,22 @@ impl TdmsMetaData for MetaData {
         Ok(MetaData { objects })
     }
 
-    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<usize, TdmsError> {
+    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<(), TdmsError> {
         let objects_length: u32 = self.objects.len() as u32;
-        let mut size = writer.write_value(&objects_length)?;
+        writer.write_value(&objects_length)?;
 
         for object in &self.objects {
-            size += writer.write_meta(object)?;
+            writer.write_meta(object)?;
         }
-        Ok(size)
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        let mut size = std::mem::size_of::<u32>();
+        for object in &self.objects {
+            size += object.size();
+        }
+        size
     }
 }
 
@@ -278,16 +308,27 @@ impl TdmsMetaData for ObjectMetaData {
         })
     }
 
-    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<usize, TdmsError> {
-        let mut size = writer.write_value(&self.path)?;
-        size += writer.write_meta(&self.raw_data_index)?;
-        size += writer.write_value(&(self.properties.len() as u32))?;
+    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<(), TdmsError> {
+        writer.write_value(&self.path)?;
+        writer.write_meta(&self.raw_data_index)?;
+        writer.write_value(&(self.properties.len() as u32))?;
 
         for (prop_name, prop_value) in &self.properties {
-            size += writer.write_value(prop_name)?;
-            size += writer.write_meta(prop_value)?;
+            writer.write_value(prop_name)?;
+            writer.write_meta(prop_value)?;
         }
-        Ok(size)
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        let mut size = self.path.size();
+        size += self.raw_data_index.size();
+        size += std::mem::size_of::<u32>();
+        for (prop_name, prop_value) in &self.properties {
+            size += prop_name.size();
+            size += prop_value.size();
+        }
+        size
     }
 }
 
@@ -323,22 +364,30 @@ impl TdmsMetaData for RawDataIndex {
         Ok(raw_data)
     }
 
-    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<usize, TdmsError> {
-        let mut size = 0;
-
+    fn write<W: Write>(&self, writer: &mut impl TdmsWriter<W>) -> Result<(), TdmsError> {
         match self {
-            RawDataIndex::None => size += writer.write_value(&0xFFFF_FFFFu32)?,
-            RawDataIndex::MatchPrevious => size += writer.write_value(&0u32)?,
+            RawDataIndex::None => writer.write_value(&0xFFFF_FFFFu32)?,
+            RawDataIndex::MatchPrevious => writer.write_value(&0u32)?,
             RawDataIndex::RawData(raw_meta) => {
                 //size: until we add string support it is 20 bytes.
-                size += writer.write_value(&20u32)?;
-                size += writer.write_meta(&raw_meta.data_type)?;
+                writer.write_value(&20u32)?;
+                writer.write_meta(&raw_meta.data_type)?;
                 //array dim is alway 1 in TDMS v2.0.
-                size += writer.write_value(&1u32)?;
-                size += writer.write_value(&raw_meta.number_of_values)?;
+                writer.write_value(&1u32)?;
+                writer.write_value(&raw_meta.number_of_values)?
             }
         }
-        Ok(size)
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        match self {
+            RawDataIndex::None => std::mem::size_of::<u32>(),
+            RawDataIndex::MatchPrevious => std::mem::size_of::<u32>(),
+            RawDataIndex::RawData(_raw_meta) => {
+                3 * std::mem::size_of::<u32>() + std::mem::size_of::<u64>()
+            }
+        }
     }
 }
 
@@ -461,8 +510,8 @@ mod tests {
         {
             let mut cursor = Cursor::new(&mut output_buffer);
             let mut writer = LittleEndianWriter::from_writer(&mut cursor);
-            let length = writer.write_meta(&value).unwrap();
-            assert_eq!(length, expected_size);
+            writer.write_meta(&value).unwrap();
+            assert_eq!(value.size(), expected_size);
         }
         output_buffer
     }

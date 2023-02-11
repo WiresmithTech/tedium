@@ -45,10 +45,12 @@ pub trait TdmsStorageType: Sized {
     const NATURAL_TYPE: DataType;
     fn read_le(reader: &mut impl Read) -> StorageResult<Self>;
     fn read_be(reader: &mut impl Read) -> StorageResult<Self>;
-    /// Write the value as little endian and return the number of bytes written.
-    fn write_le(&self, writer: &mut impl Write) -> StorageResult<usize>;
-    /// Write the value as big endian and return the number of bytes written.
-    fn write_be(&self, writer: &mut impl Write) -> StorageResult<usize>;
+    /// Write the value as little endian.
+    fn write_le(&self, writer: &mut impl Write) -> StorageResult<()>;
+    /// Write the value as big endian.
+    fn write_be(&self, writer: &mut impl Write) -> StorageResult<()>;
+    /// Report the size of the type to allow for planning of writes.
+    fn size(&self) -> usize;
 
     fn supports_data_type(data_type: &DataType) -> bool {
         Self::SUPPORTED_TYPES.contains(&data_type)
@@ -75,13 +77,16 @@ macro_rules! numeric_type {
                 reader.read_exact(&mut buf)?;
                 Ok(<$type>::from_be_bytes(buf))
             }
-            fn write_le(&self, writer: &mut impl Write) -> StorageResult<usize> {
+            fn write_le(&self, writer: &mut impl Write) -> StorageResult<()> {
                 writer.write_all(&self.to_le_bytes())?;
-                Ok(std::mem::size_of::<$type>())
+                Ok(())
             }
-            fn write_be(&self, writer: &mut impl Write) -> StorageResult<usize> {
+            fn write_be(&self, writer: &mut impl Write) -> StorageResult<()> {
                 writer.write_all(&self.to_be_bytes())?;
-                Ok(std::mem::size_of::<$type>())
+                Ok(())
+            }
+            fn size(&self) -> usize {
+                std::mem::size_of::<$type>()
             }
         }
     };
@@ -124,16 +129,20 @@ impl TdmsStorageType for String {
 
     const NATURAL_TYPE: DataType = DataType::TdmsString;
 
-    fn write_le(&self, writer: &mut impl Write) -> StorageResult<usize> {
+    fn write_le(&self, writer: &mut impl Write) -> StorageResult<()> {
         writer.write_all(&(self.len() as u32).to_le_bytes())?;
         writer.write_all(self.as_bytes())?;
-        Ok(self.len() + std::mem::size_of::<u32>())
+        Ok(())
     }
 
-    fn write_be(&self, writer: &mut impl Write) -> StorageResult<usize> {
+    fn write_be(&self, writer: &mut impl Write) -> StorageResult<()> {
         writer.write_all(&(self.len() as u32).to_be_bytes())?;
         writer.write_all(self.as_bytes())?;
-        Ok(self.len() + std::mem::size_of::<u32>())
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        self.len() + std::mem::size_of::<u32>()
     }
 }
 

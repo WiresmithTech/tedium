@@ -164,10 +164,11 @@ impl<R: Read + Seek, T: TdmsReader<R>> BlockReader<R, T> {
 pub trait WriteBlock {
     fn data_structure(&self) -> Vec<RawDataMeta>;
     fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError>;
+    fn size(&self) -> usize;
 }
 
 /// Implementation for a data slice of [`TDMSStorageType`] assuming it is a single channel of data.
-impl<'a, D: TdmsStorageType> WriteBlock for [D] {
+impl<'a, D: TdmsStorageType> WriteBlock for &[D] {
     fn data_structure(&self) -> Vec<RawDataMeta> {
         vec![RawDataMeta {
             data_type: D::NATURAL_TYPE,
@@ -177,10 +178,14 @@ impl<'a, D: TdmsStorageType> WriteBlock for [D] {
     }
 
     fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError> {
-        for item in self {
+        for item in *self {
             writer.write_value(item)?;
         }
         Ok(())
+    }
+
+    fn size(&self) -> usize {
+        std::mem::size_of::<D>() * self.len()
     }
 }
 
@@ -360,7 +365,7 @@ mod write_tests {
     #[test]
     fn single_channel_writer_generates_meta_data() {
         let data = vec![0u32; 20];
-        let meta = data[..].data_structure();
+        let meta = (&data[..]).data_structure();
 
         // Although total size isi calculable this is only used for strings.
         let expected_meta = RawDataMeta {
@@ -379,7 +384,7 @@ mod write_tests {
         let mut buf = vec![];
         {
             let mut writer = LittleEndianWriter::from_writer(&mut buf);
-            data[..].write(&mut writer).unwrap();
+            (&data[..]).write(&mut writer).unwrap();
         }
 
         assert_eq!(
