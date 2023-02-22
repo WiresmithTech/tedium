@@ -75,6 +75,8 @@ pub trait TdmsWriter<W: Write>: Sized {
             meta_data: meta,
         })
     }
+
+    fn sync(&mut self) -> Result<()>;
 }
 
 pub struct LittleEndianWriter<W: Write>(BufWriter<W>);
@@ -88,6 +90,11 @@ impl<W: Write> TdmsWriter<W> for LittleEndianWriter<W> {
     }
 
     const BIG_ENDIAN_FLAG: bool = false;
+
+    fn sync(&mut self) -> Result<()> {
+        self.0.flush()?;
+        Ok(())
+    }
 }
 
 pub struct BigEndianWriter<W: Write>(BufWriter<W>);
@@ -101,6 +108,11 @@ impl<W: Write> TdmsWriter<W> for BigEndianWriter<W> {
     }
 
     const BIG_ENDIAN_FLAG: bool = true;
+
+    fn sync(&mut self) -> Result<()> {
+        self.0.flush()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

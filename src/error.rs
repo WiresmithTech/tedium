@@ -20,4 +20,8 @@ pub enum TdmsError {
     UnsupportedType(DataType),
     #[error("Attempted to read header where no header exists. Bytes: {0:X?}")]
     HeaderPatternNotMatched([u8; 4]),
+    #[error("Tried to access a datablock that doesn't exist when reading channel: {0}")]
+    DataBlockNotFound(String, usize),
+    #[error("The data block has length {0} which is not divisible by the number of channels: {1}")]
+    BadDataBlockLength(usize, usize),
 }
