@@ -1376,6 +1376,94 @@ mod tests {
     }
 
     #[test]
+    fn matches_live_repeated_same_format() {
+        let segment = Segment {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
+        };
+
+        let segment2 = Segment {
+            toc: ToC::from_u32(0xA),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "group/ch1".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                    ObjectMetaData {
+                        path: "group/ch2".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                ],
+            }),
+        };
+
+        let mut index = Index::default();
+        index.add_segment(segment);
+        index.add_segment(segment2);
+
+        let channels = vec![
+            (
+                "group/ch1",
+                DataFormat::RawData(RawDataMeta {
+                    data_type: DataType::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                }),
+            ),
+            (
+                "group/ch2",
+                DataFormat::RawData(RawDataMeta {
+                    data_type: DataType::DoubleFloat,
+                    number_of_values: 1000,
+                    total_size_bytes: None,
+                }),
+            ),
+        ];
+        let (matches, data_format) = index.check_write_values(channels);
+        assert_eq!(matches, true);
+
+        let expected_format = vec![
+            ("group/ch1", RawDataIndex::MatchPrevious),
+            ("group/ch2", RawDataIndex::MatchPrevious),
+        ];
+
+        assert_eq!(data_format, expected_format);
+    }
+
+    #[test]
     fn matches_live_new_format() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),

@@ -1,18 +1,20 @@
-use std::{env::args, hint::black_box, path::PathBuf, time::Instant};
+use std::{env::args, time::Instant};
 
+/// Args
+/// 1. number of groups.
+/// 2. channels per group.
+/// 3. samples per channel.
+/// 4. writes per group.
+///
+/// Then we will iterate through the group writes for the number of writes per group.
 fn main() {
-    /// Args
-    /// 1. number of groups.
-    /// 2. channels per group.
-    /// 3. samples per channel.
-    /// 4. writes per group.
-    ///
-    /// Then we will iterate through the group writes for the number of writes per group.
     let args: Vec<String> = args().collect();
     let group_count: usize = args[1].parse().unwrap();
     let channels_per_group: usize = args[2].parse().unwrap();
     let samples_per_channel: usize = args[3].parse().unwrap();
     let writes_per_group: usize = args[4].parse().unwrap();
+
+    println!("groups: {group_count}, channels/group: {channels_per_group}, samples/ch/write: {samples_per_channel} and writes/group: {writes_per_group}");
 
     let mut path = std::env::temp_dir();
     path.push("test_benchmark.tdms");
@@ -24,7 +26,7 @@ fn main() {
         .collect();
     let groups: Vec<String> = (0..group_count).map(|i| format!("group{i}")).collect();
     let samples_to_write = vec![1.0f64; samples_per_channel * channels_per_group];
-    let mut read_buffer = vec![1.0f64; samples_per_channel * writes_per_group];
+    let mut read_buffer = vec![0.0f64; samples_per_channel * writes_per_group];
 
     let write_start = Instant::now();
     let mut file = tdms_lib::TdmsFile::create(&path);

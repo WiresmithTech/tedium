@@ -155,7 +155,7 @@ impl<'a, W: TdmsWriter<&'a mut File>> TdmsFileWriter<'a, W> {
         };
 
         let mut toc = ToC::default();
-        toc.contains_new_object_list = matches_live;
+        toc.contains_new_object_list = !matches_live;
         toc.data_is_interleaved = layout == DataLayout::Interleaved;
         let segment = self.writer.write_segment(toc, meta, Some(raw_data))?;
         self.index.add_segment(segment);
