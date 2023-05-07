@@ -1,16 +1,17 @@
 //! Holds the capabilites for accessing the raw data blocks.
 
-use std::{
-    io::{Read, Seek, Write},
-    marker::PhantomData,
-};
+mod read;
+mod write;
+
+use read::BlockReader;
+pub use write::{MultiChannelSlice, WriteBlock};
+
+use std::io::{Read, Seek};
 
 use crate::{
-    data_types::TdmsStorageType,
     error::TdmsError,
     meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
     reader::{BigEndianReader, LittleEndianReader, TdmsReader},
-    writer::TdmsWriter,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -116,124 +117,8 @@ impl DataBlock {
     }
 }
 
-struct BlockReader<R: Read + Seek, T: TdmsReader<R>> {
-    step_bytes: i64,
-    samples: u64,
-    reader: T,
-    _marker: PhantomData<R>,
-}
-
-impl<R: Read + Seek, T: TdmsReader<R>> BlockReader<R, T> {
-    fn new(
-        start_bytes: u64,
-        step_bytes: u64,
-        samples: u64,
-        mut reader: T,
-    ) -> Result<Self, TdmsError> {
-        reader.to_file_position(start_bytes)?;
-        Ok(Self {
-            step_bytes: step_bytes as i64,
-            samples,
-            reader,
-            _marker: PhantomData,
-        })
-    }
-
-    fn read(mut self, output: &mut [f64]) -> Result<usize, TdmsError> {
-        let mut last_index = 0;
-        for (index, sample) in output.iter_mut().take(self.samples as usize).enumerate() {
-            if index != 0 {
-                self.reader.move_position(self.step_bytes)?;
-            }
-            *sample = self.reader.read_value()?;
-            last_index = index;
-        }
-        Ok(last_index + 1)
-    }
-
-    //used for testing right now.
-    #[allow(dead_code)]
-    fn read_vec(self) -> Result<Vec<f64>, TdmsError> {
-        let mut values = vec![0.0; self.samples as usize];
-        self.read(&mut values[..])?;
-        Ok(values)
-    }
-}
-
-/// Indicates a set of data that can be written as a binary block to a TDMS file.
-pub trait WriteBlock {
-    fn data_structure(&self) -> Vec<RawDataMeta>;
-    fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError>;
-    fn size(&self) -> usize;
-}
-
-/// Implementation for a data slice of [`TDMSStorageType`] assuming it is a preformatted data block.
-impl<'a, D: TdmsStorageType> WriteBlock for &[D] {
-    fn data_structure(&self) -> Vec<RawDataMeta> {
-        vec![RawDataMeta {
-            data_type: D::NATURAL_TYPE,
-            number_of_values: self.len() as u64,
-            total_size_bytes: None,
-        }]
-    }
-
-    fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError> {
-        for item in *self {
-            writer.write_value(item)?;
-        }
-        Ok(())
-    }
-
-    fn size(&self) -> usize {
-        std::mem::size_of::<D>() * self.len()
-    }
-}
-
-/// Wrap the simple single-channel slice to handle multi-channels.
-pub struct MultiChannelSlice<'a, D: TdmsStorageType>(&'a [D], usize);
-
-impl<'a, D: TdmsStorageType> MultiChannelSlice<'a, D> {
-    pub fn from_slice(slice: &'a [D], channel_count: usize) -> Result<Self, TdmsError> {
-        if (slice.len() % channel_count) == 0 {
-            Ok(Self(slice, channel_count))
-        } else {
-            Err(TdmsError::BadDataBlockLength(slice.len(), channel_count))
-        }
-    }
-}
-
-impl<'a, D: TdmsStorageType> WriteBlock for MultiChannelSlice<'a, D> {
-    fn data_structure(&self) -> Vec<RawDataMeta> {
-        let basic_meta = self
-            .0
-            .data_structure()
-            .get(0)
-            .expect("Should always/only have 1 entry")
-            .clone();
-
-        let samples_per_channel: u64 = (self.0.len() / self.1) as u64;
-
-        (0..self.1)
-            .map(|_| {
-                let mut meta = basic_meta.clone();
-                meta.number_of_values = samples_per_channel;
-                meta
-            })
-            .collect()
-    }
-
-    fn write<W: Write, T: TdmsWriter<W>>(&self, writer: &mut T) -> Result<(), TdmsError> {
-        self.0.write(writer)
-    }
-
-    fn size(&self) -> usize {
-        self.0.size()
-    }
-}
-
 #[cfg(test)]
 mod read_tests {
-    use std::io::{Cursor, Write};
 
     use crate::data_types::DataType;
     use crate::meta_data::{MetaData, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
@@ -345,131 +230,5 @@ mod read_tests {
 
         assert_eq!(big_block.byte_order, Endianess::Big);
         assert_eq!(little_block.byte_order, Endianess::Little);
-    }
-
-    fn create_test_buffer() -> Cursor<Vec<u8>> {
-        let buffer = Vec::with_capacity(1024);
-        let mut cursor = Cursor::new(buffer);
-        for index in 0..100 {
-            let value = index as f64;
-            cursor.write(&value.to_be_bytes()).unwrap();
-        }
-        cursor
-    }
-
-    #[test]
-    fn read_data_contigous_no_offset() {
-        let mut buffer = create_test_buffer();
-
-        let reader =
-            BlockReader::<_, _>::new(0, 0, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
-        let output: Vec<f64> = reader.read_vec().unwrap();
-        assert_eq!(output, vec![0.0, 1.0, 2.0]);
-    }
-
-    #[test]
-    fn read_data_contigous_offset() {
-        let mut buffer = create_test_buffer();
-
-        let reader =
-            BlockReader::<_, _>::new(16, 0, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
-        let output: Vec<f64> = reader.read_vec().unwrap();
-        assert_eq!(output, vec![2.0, 3.0, 4.0]);
-    }
-
-    #[test]
-    fn read_data_interleaved_no_offset() {
-        let mut buffer = create_test_buffer();
-
-        let reader =
-            BlockReader::<_, _>::new(0, 8, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
-        let output: Vec<f64> = reader.read_vec().unwrap();
-        assert_eq!(output, vec![0.0, 2.0, 4.0]);
-    }
-
-    #[test]
-    fn read_data_interleaved_offset() {
-        let mut buffer = create_test_buffer();
-
-        let reader =
-            BlockReader::<_, _>::new(16, 8, 3, BigEndianReader::from_reader(&mut buffer)).unwrap();
-        let output: Vec<f64> = reader.read_vec().unwrap();
-        assert_eq!(output, vec![2.0, 4.0, 6.0]);
-    }
-}
-
-#[cfg(test)]
-mod write_tests {
-    use crate::{data_types::DataType, writer::LittleEndianWriter};
-
-    use super::*;
-
-    #[test]
-    fn single_channel_writer_generates_meta_data() {
-        let data = vec![0u32; 20];
-        let meta = (&data[..]).data_structure();
-
-        // Although total size isi calculable this is only used for strings.
-        let expected_meta = RawDataMeta {
-            data_type: DataType::U32,
-            number_of_values: 20,
-            total_size_bytes: None,
-        };
-
-        assert_eq!(meta, &[expected_meta]);
-    }
-
-    #[test]
-    fn single_channel_writer_writes_with_endianess() {
-        let data = vec![0u32, 1, 2, 3];
-
-        let mut buf = vec![];
-        {
-            let mut writer = LittleEndianWriter::from_writer(&mut buf);
-            (&data[..]).write(&mut writer).unwrap();
-        }
-
-        assert_eq!(
-            &buf[..],
-            &[
-                0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00,
-                0x00, 0x00
-            ]
-        );
-    }
-
-    #[test]
-    fn multi_channel_writer_generates_meta_data() {
-        let data = vec![0u32; 20];
-        let multi_channel = MultiChannelSlice::from_slice(&data[..], 4).unwrap();
-        let meta = multi_channel.data_structure();
-
-        // Although total size isi calculable this is only used for strings.
-        let expected_meta = RawDataMeta {
-            data_type: DataType::U32,
-            number_of_values: 5,
-            total_size_bytes: None,
-        };
-
-        assert_eq!(
-            meta,
-            &[
-                expected_meta.clone(),
-                expected_meta.clone(),
-                expected_meta.clone(),
-                expected_meta.clone()
-            ]
-        );
-    }
-
-    /// In this case it is bad because 20 isn't divisible by 3.
-    #[test]
-    fn multi_channel_writer_errors_bad_channel_length() {
-        let data = vec![0u32; 20];
-        let multi_channel_result = MultiChannelSlice::from_slice(&data[..], 3);
-        assert!(matches!(
-            multi_channel_result,
-            Err(TdmsError::BadDataBlockLength(20, 3))
-        ))
     }
 }
