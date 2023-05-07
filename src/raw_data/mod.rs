@@ -3,7 +3,7 @@
 mod read;
 mod write;
 
-use read::BlockReader;
+use read::{BlockReader, SingleChannelReader};
 pub use write::{MultiChannelSlice, WriteBlock};
 
 use std::io::{Read, Seek};
@@ -99,14 +99,14 @@ impl DataBlock {
         };
 
         match self.byte_order {
-            Endianess::Big => BlockReader::<_, _>::new(
+            Endianess::Big => SingleChannelReader::<_, _>::new(
                 self.start + start_offset,
                 step,
                 self.channels[channel_index].number_of_values,
                 BigEndianReader::from_reader(reader),
             )?
             .read(output),
-            Endianess::Little => BlockReader::<_, _>::new(
+            Endianess::Little => SingleChannelReader::<_, _>::new(
                 self.start + start_offset,
                 step,
                 self.channels[channel_index].number_of_values,
