@@ -27,6 +27,7 @@ fn main() {
     let groups: Vec<String> = (0..group_count).map(|i| format!("group{i}")).collect();
     let samples_to_write = vec![1.0f64; samples_per_channel * channels_per_group];
     let mut read_buffer = vec![0.0f64; samples_per_channel * writes_per_group];
+    let mut multi_channel_buffer = vec![vec![0.0; read_buffer.len()]; channels.len()];
 
     let write_start = Instant::now();
     let mut file = tdms_lib::TdmsFile::create(&path);
@@ -47,6 +48,8 @@ fn main() {
 
     let read_start = Instant::now();
     let mut read_file = tdms_lib::TdmsFile::load(&path);
+
+    /*/
     let averages: Vec<f64> = groups
         .iter()
         .map(|group| channels.iter().map(move |ch| format!("/{group}/{ch}")))
@@ -57,6 +60,24 @@ fn main() {
             sum / read_buffer.len() as f64
         })
         .collect();
+    */
+    /* */
+    let averages = groups
+        .iter()
+        .map(|group| {
+            let paths = channels
+                .iter()
+                .map(|ch| format!("/{group}/{ch}"))
+                .collect::<Vec<String>>();
+            read_file.read_channels(&paths[..], &mut multi_channel_buffer);
+            let averages = multi_channel_buffer
+                .iter()
+                .map(|channel_data| channel_data.iter().sum::<f64>() / (channel_data.len() as f64))
+                .collect::<Vec<f64>>();
+            averages
+        })
+        .flatten()
+        .collect::<Vec<f64>>();
     let read_time = read_start.elapsed();
 
     //std::fs::remove_file(path).unwrap();

@@ -10,8 +10,8 @@ use num_traits::FromPrimitive;
 
 use crate::data_types::{DataType, TdmsStorageType};
 use crate::error::TdmsError;
-use crate::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
-use crate::writer::TdmsWriter;
+use crate::io::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
+use crate::io::writer::TdmsWriter;
 
 ///The fixed byte size of the lead in section.
 pub const LEAD_IN_BYTES: u64 = 28;
@@ -97,7 +97,7 @@ impl TdmsMetaData for PropertyValue {
 
     fn write<W: std::io::Write>(
         &self,
-        writer: &mut impl crate::writer::TdmsWriter<W>,
+        writer: &mut impl crate::io::writer::TdmsWriter<W>,
     ) -> Result<(), TdmsError> {
         match self {
             PropertyValue::I32(value) => write_property_components(writer, DataType::I32, value),
@@ -403,7 +403,7 @@ pub struct RawDataMeta {
 mod tests {
     use std::io::Cursor;
 
-    use crate::writer::LittleEndianWriter;
+    use crate::io::writer::LittleEndianWriter;
 
     use super::*;
 

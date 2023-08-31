@@ -1,10 +1,10 @@
+mod channel_reader;
 mod data_types;
 mod error;
 mod index;
+mod io;
 mod meta_data;
 mod raw_data;
-mod reader;
-mod writer;
 
 use std::{
     fs::File,
@@ -14,9 +14,9 @@ use std::{
 
 use error::TdmsError;
 use index::{DataFormat, Index};
+use io::writer::{LittleEndianWriter, TdmsWriter};
 use meta_data::{MetaData, ObjectMetaData, PropertyValue, ToC};
 use raw_data::{MultiChannelSlice, WriteBlock};
-use writer::{LittleEndianWriter, TdmsWriter};
 
 pub use raw_data::DataLayout;
 
@@ -72,33 +72,6 @@ impl TdmsFile {
     /// For now use the format `/'group'/'channel'` where you do need the single quotes.
     pub fn read_all_properties(&self, object_path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
         self.index.get_object_properties(object_path)
-    }
-
-    pub fn read_channel(&mut self, object_path: &str, output: &mut [f64]) -> Result<(), TdmsError> {
-        let data_positions = self
-            .index
-            .get_channel_data_positions(object_path)
-            .ok_or_else(|| TdmsError::MissingObject(object_path.to_string()))?;
-
-        let mut samples_read = 0;
-        for location in data_positions {
-            let block = self
-                .index
-                .get_data_block(location.data_block)
-                .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(object_path.to_string(), location.data_block)
-                })?;
-            samples_read += block.read(
-                location.channel_index,
-                &mut self.file,
-                &mut output[samples_read..],
-            )?;
-            if samples_read >= output.len() {
-                break;
-            }
-        }
-
-        Ok(())
     }
 
     pub fn writer<'a>(

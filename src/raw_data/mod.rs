@@ -10,8 +10,8 @@ use std::io::{Read, Seek};
 
 use crate::{
     error::TdmsError,
+    io::reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
-    reader::{BigEndianReader, LittleEndianReader, TdmsReader},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

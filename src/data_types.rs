@@ -148,8 +148,8 @@ impl TdmsStorageType for String {
 
 #[cfg(test)]
 mod tests {
-    use crate::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
-    use crate::writer::{BigEndianWriter, LittleEndianWriter, TdmsWriter};
+    use crate::io::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
+    use crate::io::writer::{BigEndianWriter, LittleEndianWriter, TdmsWriter};
     use std::io::Cursor;
     /// Tests the conversion against the le and be version for the value specified.
     macro_rules! test_formatting {

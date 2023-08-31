@@ -1,5 +1,5 @@
 use crate::error::TdmsError;
-use crate::reader::TdmsReader;
+use crate::io::reader::TdmsReader;
 use std::io::{Read, Seek};
 use std::marker::PhantomData;
 
@@ -71,7 +71,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> BlockReader for SingleChannelReader<R, T>
 
 #[cfg(test)]
 mod tests {
-    use crate::reader::BigEndianReader;
+    use crate::io::reader::BigEndianReader;
 
     use super::*;
     use std::io::{Cursor, Write};
