@@ -29,7 +29,7 @@ impl TdmsFile {
                     TdmsError::DataBlockNotFound(object_path.to_string(), location.data_block)
                 })?;
 
-            samples_read += block.read(
+            samples_read += block.read_single(
                 location.channel_index,
                 &mut self.file,
                 &mut output[samples_read..],
@@ -72,23 +72,25 @@ impl TdmsFile {
                     )
                 })?;
 
-            // Try reading each channel from each location.
-            // Unfortunately this didn't help performance as I think each block read
-            // still performs a seek which kills the buffering. Will need a multi-channel
-            // read option to really boost performance.
-            for ((channel, samples_read), output) in location
+            // Collect the data we will need for a multi-channel read.
+            let mut channels_to_read = location
                 .channel_indexes
                 .iter()
-                .zip(samples_read.iter_mut())
                 .zip(output.iter_mut())
-            {
-                if let Some(index) = channel {
-                    *samples_read +=
-                        block.read(*index, &mut self.file, &mut output[*samples_read..])?;
-                    if *samples_read >= output.len() {
-                        //need to end future channel reads??
+                .zip(samples_read.iter_mut())
+                .filter_map(|((channel_id, output), samples_read)| {
+                    if let Some(idx) = channel_id {
+                        Some((*idx, &mut output[*samples_read..]))
+                    } else {
+                        None
                     }
-                }
+                })
+                .collect::<Vec<_>>();
+
+            let iteration_samples = block.read(&mut self.file, &mut channels_to_read)?;
+
+            for (idx, _) in channels_to_read {
+                samples_read[idx] += iteration_samples;
             }
 
             if samples_read
