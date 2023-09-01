@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use crate::{error::TdmsError, index::DataLocation, TdmsFile};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -10,6 +12,29 @@ struct MultiChannelLocation {
     /// todo: can we avoid a vec here? It should be small
     /// so smallvec or array may work.
     channel_indexes: Vec<Option<usize>>,
+}
+
+#[derive(Eq, PartialEq, Clone, Debug)]
+struct ChannelProgress {
+    samples_read: usize,
+    samples_target: usize,
+}
+
+impl ChannelProgress {
+    fn new(samples_target: usize) -> Self {
+        Self {
+            samples_read: 0,
+            samples_target,
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.samples_read >= self.samples_target
+    }
+
+    fn add_samples(&mut self, samples: usize) {
+        self.samples_read += samples;
+    }
 }
 
 impl TdmsFile {
@@ -48,7 +73,7 @@ impl TdmsFile {
         paths: &[impl AsRef<str>],
         output: &mut [&mut [f64]],
     ) -> Result<(), TdmsError> {
-        let data_positions = paths
+        let channel_positions = paths
             .iter()
             .map(|object_path| {
                 self.index
@@ -57,10 +82,13 @@ impl TdmsFile {
             })
             .collect::<Result<Vec<&[DataLocation]>, TdmsError>>()?;
 
-        let read_plan = read_plan(&data_positions[..]);
+        let read_plan = read_plan(&channel_positions[..]);
 
-        let mut samples_read = vec![0; paths.len()];
-        let sample_target: Vec<usize> = output.iter().map(|out_slice| out_slice.len()).collect();
+        let mut channel_progress: Vec<ChannelProgress> = output
+            .iter()
+            .map(|out_slice| ChannelProgress::new(out_slice.len()))
+            .collect();
+
         for location in read_plan {
             let block = self
                 .index
@@ -72,43 +100,67 @@ impl TdmsFile {
                     )
                 })?;
 
-            // Collect the data we will need for a multi-channel read.
-            let mut channels_to_read = location
-                .channel_indexes
-                .iter()
-                .zip(output.iter_mut())
-                .zip(samples_read.iter())
-                .zip(sample_target.iter())
-                .filter_map(|(((channel_id, output), samples_read), samples_target)| {
-                    match (channel_id, samples_read, samples_target) {
-                        // If we have it our target, ignore this channel.
-                        (Some(_), &read, &target) if read >= target => None,
-                        // More to read - include this channel.
-                        (Some(idx), &read, _) => Some((*idx, &mut output[read..])),
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>();
+            let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
 
-            let iteration_samples = block.read(&mut self.file, &mut channels_to_read)?;
+            let location_samples_read = block.read(&mut self.file, &mut channels_to_read)?;
 
-            for (ch_idx, block_idx) in location.channel_indexes.iter().enumerate() {
-                if block_idx.is_some() {
-                    samples_read[ch_idx] += iteration_samples;
-                }
-            }
+            let read_complete =
+                update_progress(location, &mut channel_progress, location_samples_read);
 
-            if samples_read
-                .iter()
-                .zip(sample_target.iter())
-                .all(|(read, target)| read >= target)
-            {
+            if read_complete {
                 break;
             }
         }
 
         Ok(())
     }
+}
+
+/// Get the read parameters and output for this particular block.
+fn get_block_read_data<'a, 'b: 'o, 'c: 'o, 'o>(
+    location: &'a MultiChannelLocation,
+    output: &'b mut [&'c mut [f64]],
+    channel_progress: &Vec<ChannelProgress>,
+) -> Vec<(usize, &'o mut [f64])> {
+    location
+        .channel_indexes
+        .iter()
+        .zip(output.iter_mut())
+        .zip(channel_progress.iter())
+        .filter_map(|((channel_id, output), progress)| {
+            match (channel_id, progress) {
+                // If we have it our target, ignore this channel.
+                (Some(_), progress) if progress.is_complete() => None,
+                // More to read - include this channel.
+                (Some(idx), progress) => Some((*idx, &mut output[progress.samples_read..])),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+/// Update the progress of the channels we have read.
+///
+/// Returns true if all are complete.
+fn update_progress(
+    location: MultiChannelLocation,
+    channel_progress: &mut [ChannelProgress],
+    iteration_samples: usize,
+) -> bool {
+    assert!(channel_progress.len() == location.channel_indexes.len());
+
+    for (ch_idx, block_idx) in location.channel_indexes.iter().enumerate() {
+        if block_idx.is_some() {
+            channel_progress[ch_idx].add_samples(iteration_samples);
+        }
+    }
+    all_channels_complete(channel_progress)
+}
+
+fn all_channels_complete(channel_progress: &[ChannelProgress]) -> bool {
+    channel_progress
+        .iter()
+        .all(|progress| progress.is_complete())
 }
 
 /// Plan the locations that we need to visit for each channel.
@@ -298,5 +350,23 @@ mod tests {
         ];
 
         assert_eq!(plan, expected_plan);
+    }
+
+    #[test]
+    fn test_progress_complete() {
+        let mut progress = ChannelProgress::new(10);
+        progress.add_samples(5);
+        progress.add_samples(5);
+
+        assert!(progress.is_complete());
+    }
+
+    #[test]
+    fn test_progress_complete_over() {
+        let mut progress = ChannelProgress::new(10);
+        progress.add_samples(5);
+        progress.add_samples(6);
+
+        assert!(progress.is_complete());
     }
 }
