@@ -46,7 +46,7 @@ impl TdmsFile {
     pub fn read_channels(
         &mut self,
         paths: &[impl AsRef<str>],
-        output: &mut [Vec<f64>],
+        output: &mut [&mut [f64]],
     ) -> Result<(), TdmsError> {
         let data_positions = paths
             .iter()
@@ -77,26 +77,31 @@ impl TdmsFile {
                 .channel_indexes
                 .iter()
                 .zip(output.iter_mut())
-                .zip(samples_read.iter_mut())
-                .filter_map(|((channel_id, output), samples_read)| {
-                    if let Some(idx) = channel_id {
-                        Some((*idx, &mut output[*samples_read..]))
-                    } else {
-                        None
+                .zip(samples_read.iter())
+                .zip(sample_target.iter())
+                .filter_map(|(((channel_id, output), samples_read), samples_target)| {
+                    match (channel_id, samples_read, samples_target) {
+                        // If we have it our target, ignore this channel.
+                        (Some(_), &read, &target) if read >= target => None,
+                        // More to read - include this channel.
+                        (Some(idx), &read, _) => Some((*idx, &mut output[read..])),
+                        _ => None,
                     }
                 })
                 .collect::<Vec<_>>();
 
             let iteration_samples = block.read(&mut self.file, &mut channels_to_read)?;
 
-            for (idx, _) in channels_to_read {
-                samples_read[idx] += iteration_samples;
+            for (ch_idx, block_idx) in location.channel_indexes.iter().enumerate() {
+                if block_idx.is_some() {
+                    samples_read[ch_idx] += iteration_samples;
+                }
             }
 
             if samples_read
                 .iter()
                 .zip(sample_target.iter())
-                .all(|(read, target)| read == target)
+                .all(|(read, target)| read >= target)
             {
                 break;
             }

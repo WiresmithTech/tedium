@@ -1,2 +1,7 @@
 /target
 /Cargo.lock
+
+#lv
+*.aliases
+*.lvlps
+*.tdms_index

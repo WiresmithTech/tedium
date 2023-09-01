@@ -62,6 +62,10 @@ fn main() {
         .collect();
     */
     /* */
+    let mut channel_outputs = multi_channel_buffer
+        .iter_mut()
+        .map(|v| &mut v[..])
+        .collect::<Vec<&mut [f64]>>();
     let averages = groups
         .iter()
         .map(|group| {
@@ -69,8 +73,10 @@ fn main() {
                 .iter()
                 .map(|ch| format!("/{group}/{ch}"))
                 .collect::<Vec<String>>();
-            read_file.read_channels(&paths[..], &mut multi_channel_buffer);
-            let averages = multi_channel_buffer
+            read_file
+                .read_channels(&paths[..], &mut channel_outputs[..])
+                .unwrap();
+            let averages = channel_outputs
                 .iter()
                 .map(|channel_data| channel_data.iter().sum::<f64>() / (channel_data.len() as f64))
                 .collect::<Vec<f64>>();
