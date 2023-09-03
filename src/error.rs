@@ -24,4 +24,6 @@ pub enum TdmsError {
     DataBlockNotFound(String, usize),
     #[error("The data block has length {0} which is not divisible by the number of channels: {1}")]
     BadDataBlockLength(usize, usize),
+    #[error("Attempting to read a channel of type {0} as type {1}")]
+    DataTypeMismatch(DataType, DataType),
 }

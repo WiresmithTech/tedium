@@ -88,7 +88,7 @@ impl DataBlock {
             }
             DataLayout::Interleaved => {
                 let record_plan =
-                    RecordStructure::build_record_plan(&self.channels, channels_to_read);
+                    RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
                 match self.byte_order {
                     Endianess::Big => MultiChannelInterleavedReader::<_, _>::new(
                         BigEndianReader::from_reader(reader),

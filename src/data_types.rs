@@ -1,7 +1,10 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
 //!
-use std::io::{Read, Write};
+use std::{
+    fmt::Display,
+    io::{Read, Write},
+};
 
 use num_derive::FromPrimitive;
 
@@ -58,6 +61,35 @@ impl DataType {
             DataType::ComplexSingleFloat => 8,
             DataType::ComplexDoubleFloat => 16,
             DataType::DAQmxRawData => 4,
+        }
+    }
+}
+
+impl Display for DataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataType::Void => write!(f, "Void"),
+            DataType::I8 => write!(f, "I8"),
+            DataType::I16 => write!(f, "I16"),
+            DataType::I32 => write!(f, "I32"),
+            DataType::I64 => write!(f, "I64"),
+            DataType::U8 => write!(f, "U8"),
+            DataType::U16 => write!(f, "U16"),
+            DataType::U32 => write!(f, "U32"),
+            DataType::U64 => write!(f, "U64"),
+            DataType::SingleFloat => write!(f, "SingleFloat"),
+            DataType::DoubleFloat => write!(f, "DoubleFloat"),
+            DataType::ExtendedFloat => write!(f, "ExtendedFloat"),
+            DataType::SingleFloatWithUnit => write!(f, "SingleFloatWithUnit"),
+            DataType::DoubleFloatWithUnit => write!(f, "DoubleFloatWithUnit"),
+            DataType::ExtendedFloatWithUnit => write!(f, "ExtendedFloatWithUnit"),
+            DataType::TdmsString => write!(f, "TdmsString"),
+            DataType::Boolean => write!(f, "Boolean"),
+            DataType::TimeStamp => write!(f, "TimeStamp"),
+            DataType::FixedPoint => write!(f, "FixedPoint"),
+            DataType::ComplexSingleFloat => write!(f, "ComplexSingleFloat"),
+            DataType::ComplexDoubleFloat => write!(f, "ComplexDoubleFloat"),
+            DataType::DAQmxRawData => write!(f, "DAQmxRawData"),
         }
     }
 }

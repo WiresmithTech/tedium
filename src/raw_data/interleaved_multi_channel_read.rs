@@ -106,7 +106,8 @@ mod tests {
         );
         let mut output: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output[..])];
-        let read_plan = RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]);
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output, vec![0.0, 2.0, 4.0]);
     }
@@ -124,7 +125,8 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan = RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]);
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output_1, vec![0.0, 4.0, 8.0]);
         assert_eq!(output_2, vec![2.0, 6.0, 10.0]);
@@ -143,7 +145,8 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 2];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan = RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]);
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output_1, vec![0.0, 4.0, 8.0]);
         assert_eq!(output_2, vec![2.0, 6.0]);

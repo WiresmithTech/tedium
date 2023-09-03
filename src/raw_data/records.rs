@@ -4,7 +4,7 @@
 //! This is used to define a read pattern for a data segment and
 //! is used by the data readers to efficiently read the data.
 
-use crate::{data_types::TdmsStorageType, meta_data::RawDataMeta};
+use crate::{data_types::TdmsStorageType, error::TdmsError, meta_data::RawDataMeta};
 
 // An instruction on how to move through the record based on the read instructions.
 ///
@@ -44,12 +44,13 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     pub fn build_record_plan(
         channels: &[RawDataMeta],
         outputs: &'b mut [(usize, &'b mut [T])],
-    ) -> RecordStructure<'o, T> {
+    ) -> Result<RecordStructure<'o, T>, TdmsError> {
         let mut plan = Self::build_base_record(channels);
 
+        validate_types_match(outputs, channels)?;
         plan.set_readable_records(outputs);
         plan.compress_reads();
-        plan
+        Ok(plan)
     }
 
     /// Get the read instructions for the record.
@@ -96,9 +97,24 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     fn compress_reads(&mut self) {}
 }
 
+fn validate_types_match<T: TdmsStorageType>(
+    outputs: &[(usize, &mut [T])],
+    channels: &[RawDataMeta],
+) -> Result<(), TdmsError> {
+    for (output_idx, _) in outputs.iter() {
+        if !T::SUPPORTED_TYPES.contains(&channels[*output_idx].data_type) {
+            return Err(TdmsError::DataTypeMismatch(
+                channels[*output_idx].data_type,
+                T::NATURAL_TYPE,
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::data_types::DataType;
+    use crate::{data_types::DataType, error::TdmsError};
 
     use super::*;
 
@@ -121,7 +137,8 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(0, &mut out1), (1, &mut out2)];
 
-        let read_plan = RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]);
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.0.len(), 2);
         assert_eq!(read_plan.0[0].length, 1000);
@@ -148,12 +165,43 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(1, &mut out1)];
 
-        let read_plan = RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]);
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.0.len(), 2);
         assert_eq!(read_plan.0[1].length, 1000);
         assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Skip(8)));
         assert!(matches!(read_plan.0[1].plan, RecordEntryPlan::Read(_)));
+    }
+
+    #[test]
+    fn test_error_on_type_mismatch() {
+        let channels = vec![
+            RawDataMeta {
+                data_type: DataType::DoubleFloat,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+            RawDataMeta {
+                data_type: DataType::DoubleFloat,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+        ];
+        let mut out1 = vec![0; 1000];
+
+        let mut outputs: Vec<(usize, &mut [u32])> = vec![(1, &mut out1)];
+
+        let read_plan_result =
+            RecordStructure::<u32>::build_record_plan(&channels, &mut outputs[..]);
+
+        assert!(matches!(
+            read_plan_result,
+            Err(TdmsError::DataTypeMismatch(
+                DataType::DoubleFloat,
+                DataType::U32
+            ))
+        ));
     }
 
     #[ignore = "Not yet implemented"]
@@ -180,7 +228,8 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(1, &mut out1)];
 
-        let read_plan = RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]);
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.0.len(), 2);
         assert_eq!(read_plan.0[1].length, 1000);
@@ -211,7 +260,8 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [i32])> = vec![(1, &mut out1)];
 
-        let read_plan = RecordStructure::<i32>::build_record_plan(&channels, &mut outputs[..]);
+        let read_plan =
+            RecordStructure::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.row_size(), 20);
     }
