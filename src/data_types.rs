@@ -36,6 +36,32 @@ pub enum DataType {
     DAQmxRawData = 0xFFFF_FFFF,
 }
 
+//todo: validate these.
+impl DataType {
+    pub fn size(&self) -> u8 {
+        match self {
+            DataType::Void => 0,
+            DataType::I8 | DataType::U8 => 1,
+            DataType::I16 | DataType::U16 => 2,
+            DataType::I32 | DataType::U32 => 4,
+            DataType::I64 | DataType::U64 => 8,
+            DataType::SingleFloat => 4,
+            DataType::DoubleFloat => 8,
+            DataType::ExtendedFloat => 16,
+            DataType::SingleFloatWithUnit => 4,
+            DataType::DoubleFloatWithUnit => 8,
+            DataType::ExtendedFloatWithUnit => 16,
+            DataType::TdmsString => 0,
+            DataType::Boolean => 1,
+            DataType::TimeStamp => 8,
+            DataType::FixedPoint => 8,
+            DataType::ComplexSingleFloat => 8,
+            DataType::ComplexDoubleFloat => 16,
+            DataType::DAQmxRawData => 4,
+        }
+    }
+}
+
 type StorageResult<T> = std::result::Result<T, TdmsError>;
 
 pub trait TdmsStorageType: Sized {
@@ -43,6 +69,8 @@ pub trait TdmsStorageType: Sized {
     const SUPPORTED_TYPES: &'static [DataType];
     /// The [`DataType`] that this storage type is naturally written as.
     const NATURAL_TYPE: DataType;
+    /// Size in bytes of the type.
+    const SIZE_BYTES: usize = std::mem::size_of::<Self>();
     fn read_le(reader: &mut impl Read) -> StorageResult<Self>;
     fn read_be(reader: &mut impl Read) -> StorageResult<Self>;
     /// Write the value as little endian.
@@ -86,7 +114,7 @@ macro_rules! numeric_type {
                 Ok(())
             }
             fn size(&self) -> usize {
-                std::mem::size_of::<$type>()
+                Self::SIZE_BYTES
             }
         }
     };

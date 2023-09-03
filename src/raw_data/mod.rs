@@ -1,9 +1,10 @@
 //! Holds the capabilites for accessing the raw data blocks.
-
 mod interleaved_multi_channel_read;
+mod records;
 mod single_channel_read;
 mod write;
 
+use records::RecordStructure;
 use single_channel_read::{BlockReader, SingleChannelReader};
 pub use write::{MultiChannelSlice, WriteBlock};
 
@@ -71,10 +72,10 @@ impl DataBlock {
         }
     }
 
-    pub fn read(
+    pub fn read<'a, 'b>(
         &self,
-        reader: &mut (impl Read + Seek),
-        channels_to_read: &mut [(usize, &mut [f64])],
+        reader: &'a mut (impl Read + Seek),
+        channels_to_read: &'b mut [(usize, &'b mut [f64])],
     ) -> Result<usize, TdmsError> {
         match self.layout {
             // No multichannel implementation for contiguous data yet.
@@ -85,64 +86,25 @@ impl DataBlock {
                 }
                 Ok(length)
             }
-            DataLayout::Interleaved => match self.byte_order {
-                Endianess::Big => MultiChannelInterleavedReader::<_, _>::new(
-                    BigEndianReader::from_reader(reader),
-                    self.start,
-                    self.length,
-                )
-                .read(self.channels.len(), channels_to_read),
-                Endianess::Little => MultiChannelInterleavedReader::<_, _>::new(
-                    LittleEndianReader::from_reader(reader),
-                    self.start,
-                    self.length,
-                )
-                .read(self.channels.len(), channels_to_read),
-            },
-        }
-
-        /*
-        //first is element size, second is total size.
-        let channel_sizes: Vec<(u64, u64)> = self
-            .channels
-            .iter()
-            .map(|channel_layout| {
-                let element_size = 8; //only support doubles for testing.
-                let total_size = channel_layout.number_of_values * element_size;
-                (element_size, total_size)
-            })
-            .collect();
-
-        let (start_offset, step) = match self.layout {
             DataLayout::Interleaved => {
-                let start_offset: u64 = channel_sizes.iter().take(channel_index).map(|e| e.0).sum();
-                let step =
-                    channel_sizes.iter().map(|e| e.0).sum::<u64>() - channel_sizes[channel_index].0;
-                (start_offset, step)
+                let record_plan =
+                    RecordStructure::build_record_plan(&self.channels, channels_to_read);
+                match self.byte_order {
+                    Endianess::Big => MultiChannelInterleavedReader::<_, _>::new(
+                        BigEndianReader::from_reader(reader),
+                        self.start,
+                        self.length,
+                    )
+                    .read(record_plan),
+                    Endianess::Little => MultiChannelInterleavedReader::<_, _>::new(
+                        LittleEndianReader::from_reader(reader),
+                        self.start,
+                        self.length,
+                    )
+                    .read(record_plan),
+                }
             }
-            DataLayout::Contigious => {
-                let start_offset = channel_sizes.iter().take(channel_index).map(|e| e.1).sum();
-                (start_offset, 0)
-            }
-        };
-
-        match self.byte_order {
-            Endianess::Big => SingleChannelReader::<_, _>::new(
-                self.start + start_offset,
-                step,
-                self.channels[channel_index].number_of_values,
-                BigEndianReader::from_reader(reader),
-            )?
-            .read(output),
-            Endianess::Little => SingleChannelReader::<_, _>::new(
-                self.start + start_offset,
-                step,
-                self.channels[channel_index].number_of_values,
-                LittleEndianReader::from_reader(reader),
-            )?
-            .read(output),
         }
-        */
     }
 
     pub fn read_single(

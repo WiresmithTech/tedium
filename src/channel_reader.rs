@@ -1,5 +1,3 @@
-use std::ops::ControlFlow;
-
 use crate::{error::TdmsError, index::DataLocation, TdmsFile};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
