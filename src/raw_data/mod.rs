@@ -1,4 +1,5 @@
 //! Holds the capabilites for accessing the raw data blocks.
+mod contigious_multi_channel_read;
 mod interleaved_multi_channel_read;
 mod records;
 mod single_channel_read;
@@ -16,7 +17,10 @@ use crate::{
     meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
 };
 
-use self::interleaved_multi_channel_read::MultiChannelInterleavedReader;
+use self::{
+    contigious_multi_channel_read::MultiChannelContigousReader,
+    interleaved_multi_channel_read::MultiChannelInterleavedReader,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DataLayout {
@@ -77,32 +81,39 @@ impl DataBlock {
         reader: &'a mut (impl Read + Seek),
         channels_to_read: &'b mut [(usize, &'b mut [f64])],
     ) -> Result<usize, TdmsError> {
-        match self.layout {
+        let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
+
+        match (self.layout, self.byte_order) {
             // No multichannel implementation for contiguous data yet.
-            DataLayout::Contigious => {
-                let mut length = 0;
-                for channel in channels_to_read {
-                    length = self.read_single(channel.0, reader, channel.1)?;
-                }
-                Ok(length)
+            (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
+                BigEndianReader::from_reader(reader),
+                self.start,
+                self.length,
+            )
+            .read(record_plan),
+            (DataLayout::Contigious, Endianess::Little) => {
+                MultiChannelContigousReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read(record_plan)
             }
-            DataLayout::Interleaved => {
-                let record_plan =
-                    RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
-                match self.byte_order {
-                    Endianess::Big => MultiChannelInterleavedReader::<_, _>::new(
-                        BigEndianReader::from_reader(reader),
-                        self.start,
-                        self.length,
-                    )
-                    .read(record_plan),
-                    Endianess::Little => MultiChannelInterleavedReader::<_, _>::new(
-                        LittleEndianReader::from_reader(reader),
-                        self.start,
-                        self.length,
-                    )
-                    .read(record_plan),
-                }
+            (DataLayout::Interleaved, Endianess::Big) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    BigEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read(record_plan)
+            }
+            (DataLayout::Interleaved, Endianess::Little) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read(record_plan)
             }
         }
     }
