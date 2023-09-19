@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::data_types::DataType;
+use crate::io::data_types::DataType;
 
 #[derive(Error, Debug)]
 pub enum TdmsError {

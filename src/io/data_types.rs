@@ -1,6 +1,6 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
-//!
+
 use std::{
     fmt::Display,
     io::{Read, Write},

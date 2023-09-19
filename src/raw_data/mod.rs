@@ -1,12 +1,13 @@
 //! Holds the capabilites for accessing the raw data blocks.
+//!
+//! Data blocks come in different formats so in here are the modules for
+//! different formats as well as common elements like query planners.
 mod contigious_multi_channel_read;
 mod interleaved_multi_channel_read;
 mod records;
-mod single_channel_read;
 mod write;
 
 use records::RecordStructure;
-use single_channel_read::{BlockReader, SingleChannelReader};
 pub use write::{MultiChannelSlice, WriteBlock};
 
 use std::io::{Read, Seek};
@@ -132,7 +133,7 @@ impl DataBlock {
 #[cfg(test)]
 mod read_tests {
 
-    use crate::data_types::DataType;
+    use crate::io::data_types::DataType;
     use crate::meta_data::{MetaData, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
 
     use super::*;

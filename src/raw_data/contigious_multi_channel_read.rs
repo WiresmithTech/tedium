@@ -82,7 +82,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{data_types::DataType, io::reader::BigEndianReader, meta_data::RawDataMeta};
+    use crate::{io::data_types::DataType, io::reader::BigEndianReader, meta_data::RawDataMeta};
 
     use super::*;
     use std::io::{Cursor, Write};

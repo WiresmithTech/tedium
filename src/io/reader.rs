@@ -5,8 +5,9 @@
 use std::io::{BufReader, Read, Seek};
 
 use crate::error::TdmsError;
-use crate::meta_data::{TdmsMetaData, ToC};
-use crate::{data_types::TdmsStorageType, meta_data::Segment};
+use crate::meta_data::{Segment, TdmsMetaData, ToC};
+
+use super::data_types::TdmsStorageType;
 
 pub trait TdmsReader<R: Read + Seek>: Sized {
     fn from_reader(reader: R) -> Self;

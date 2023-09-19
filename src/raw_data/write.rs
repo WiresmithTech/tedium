@@ -1,7 +1,7 @@
 //! Handles writing the raw data to disk.
 
-use crate::data_types::TdmsStorageType;
 use crate::error::TdmsError;
+use crate::io::data_types::TdmsStorageType;
 use crate::meta_data::RawDataMeta;
 // This is a circular reference - can we remove it?
 use crate::io::writer::TdmsWriter;
@@ -80,7 +80,7 @@ impl<'a, D: TdmsStorageType> WriteBlock for MultiChannelSlice<'a, D> {
 
 #[cfg(test)]
 mod write_tests {
-    use crate::{data_types::DataType, io::writer::LittleEndianWriter};
+    use crate::{io::data_types::DataType, io::writer::LittleEndianWriter};
 
     use super::*;
 

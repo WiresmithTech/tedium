@@ -316,7 +316,7 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use crate::data_types::DataType;
+    use crate::io::data_types::DataType;
     use crate::meta_data::MetaData;
     use crate::meta_data::ObjectMetaData;
     use crate::meta_data::PropertyValue;

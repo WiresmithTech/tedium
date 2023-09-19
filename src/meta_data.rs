@@ -8,8 +8,8 @@ use std::io::{Read, Seek, Write};
 
 use num_traits::FromPrimitive;
 
-use crate::data_types::{DataType, TdmsStorageType};
 use crate::error::TdmsError;
+use crate::io::data_types::{DataType, TdmsStorageType};
 use crate::io::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
 use crate::io::writer::TdmsWriter;
 

@@ -4,7 +4,7 @@
 //! This is used to define a read pattern for a data segment and
 //! is used by the data readers to efficiently read the data.
 
-use crate::{data_types::TdmsStorageType, error::TdmsError, meta_data::RawDataMeta};
+use crate::{error::TdmsError, io::data_types::TdmsStorageType, meta_data::RawDataMeta};
 
 // An instruction on how to move through the record based on the read instructions.
 ///
@@ -141,7 +141,7 @@ fn validate_types_match<T: TdmsStorageType>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{data_types::DataType, error::TdmsError};
+    use crate::{error::TdmsError, io::data_types::DataType};
 
     use super::*;
 

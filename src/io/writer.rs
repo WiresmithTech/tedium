@@ -4,10 +4,11 @@
 
 use std::io::{BufWriter, Write};
 
-use crate::data_types::TdmsStorageType;
 use crate::error::TdmsError;
 use crate::meta_data::{MetaData, Segment, TdmsMetaData, ToC};
 use crate::raw_data::WriteBlock;
+
+use super::data_types::TdmsStorageType;
 
 type Result<T> = std::result::Result<T, TdmsError>;
 
