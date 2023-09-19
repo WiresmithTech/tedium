@@ -2,8 +2,8 @@
 //!
 //!
 
-use crate::error::TdmsError;
 use crate::io::reader::TdmsReader;
+use crate::{error::TdmsError, io::data_types::TdmsStorageType};
 use std::{
     io::{Read, Seek},
     marker::PhantomData,
@@ -37,7 +37,10 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
     ///
     /// *ASSUMPTION*: All channels have the same number of values available. The spec
     /// allows for different lengths but all clients have I have seen do not.
-    pub fn read(&mut self, mut channels: RecordStructure<f64>) -> Result<usize, TdmsError> {
+    pub fn read<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordStructure<D>,
+    ) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
         let row_count = self.block_size as usize / channels.row_size();
 

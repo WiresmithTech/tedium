@@ -65,3 +65,30 @@ fn test_read_sub_blocks() {
         .unwrap();
     assert_eq!(buffer0, expected0[0..read_length]);
 }
+
+macro_rules! read_datatype_test {
+    ($file: ident, $type: ty) => {
+        let channel_name = stringify!($type);
+        let expected = (0..100).map(|value| value as $type).collect::<Vec<$type>>();
+        let mut buffer = vec![0 as $type; 100];
+        $file
+            .read_channel(&format!("/'datatypes'/'{channel_name}'"), &mut buffer[..])
+            .unwrap();
+        assert_eq!(buffer, expected);
+    };
+}
+
+#[test]
+fn test_read_basic_numeric_types() {
+    let mut file = common::open_test_file();
+    read_datatype_test!(file, i8);
+    read_datatype_test!(file, u8);
+    read_datatype_test!(file, i16);
+    read_datatype_test!(file, u16);
+    read_datatype_test!(file, i32);
+    read_datatype_test!(file, u32);
+    read_datatype_test!(file, i64);
+    read_datatype_test!(file, u64);
+    read_datatype_test!(file, f32);
+    read_datatype_test!(file, f64);
+}

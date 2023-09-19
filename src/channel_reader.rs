@@ -1,4 +1,4 @@
-use crate::{error::TdmsError, index::DataLocation, TdmsFile};
+use crate::{error::TdmsError, index::DataLocation, io::data_types::TdmsStorageType, TdmsFile};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 struct MultiChannelLocation {
@@ -36,7 +36,11 @@ impl ChannelProgress {
 }
 
 impl TdmsFile {
-    pub fn read_channel(&mut self, object_path: &str, output: &mut [f64]) -> Result<(), TdmsError> {
+    pub fn read_channel<D: TdmsStorageType>(
+        &mut self,
+        object_path: &str,
+        output: &mut [D],
+    ) -> Result<(), TdmsError> {
         let data_positions = self
             .index
             .get_channel_data_positions(object_path)
@@ -66,10 +70,10 @@ impl TdmsFile {
         Ok(())
     }
 
-    pub fn read_channels(
+    pub fn read_channels<D: TdmsStorageType>(
         &mut self,
         paths: &[impl AsRef<str>],
-        output: &mut [&mut [f64]],
+        output: &mut [&mut [D]],
     ) -> Result<(), TdmsError> {
         let channel_positions = paths
             .iter()
@@ -115,11 +119,11 @@ impl TdmsFile {
 }
 
 /// Get the read parameters and output for this particular block.
-fn get_block_read_data<'a, 'b: 'o, 'c: 'o, 'o>(
+fn get_block_read_data<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
     location: &'a MultiChannelLocation,
-    output: &'b mut [&'c mut [f64]],
+    output: &'b mut [&'c mut [D]],
     channel_progress: &Vec<ChannelProgress>,
-) -> Vec<(usize, &'o mut [f64])> {
+) -> Vec<(usize, &'o mut [D])> {
     location
         .channel_indexes
         .iter()

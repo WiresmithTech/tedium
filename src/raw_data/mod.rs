@@ -14,7 +14,10 @@ use std::io::{Read, Seek};
 
 use crate::{
     error::TdmsError,
-    io::reader::{BigEndianReader, LittleEndianReader, TdmsReader},
+    io::{
+        data_types::TdmsStorageType,
+        reader::{BigEndianReader, LittleEndianReader, TdmsReader},
+    },
     meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
 };
 
@@ -85,10 +88,10 @@ impl DataBlock {
     ///
     /// If an output slice for a channel has a length less than the number of samples it will stop
     /// reading once the end of the slice is reached.
-    pub fn read<'a, 'b>(
+    pub fn read<'a, 'b, D: TdmsStorageType>(
         &self,
         reader: &'a mut (impl Read + Seek),
-        channels_to_read: &'b mut [(usize, &'b mut [f64])],
+        channels_to_read: &'b mut [(usize, &'b mut [D])],
     ) -> Result<usize, TdmsError> {
         let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
 
@@ -130,11 +133,11 @@ impl DataBlock {
     /// Read a single channel from the block.
     ///
     /// This is a simple wrapper around the `read` function for the common case of reading a single channel.
-    pub fn read_single(
+    pub fn read_single<D: TdmsStorageType>(
         &self,
         channel_index: usize,
         reader: &mut (impl Read + Seek),
-        output: &mut [f64],
+        output: &mut [D],
     ) -> Result<usize, TdmsError> {
         //first is element size, second is total size.
         self.read(reader, &mut [(channel_index, output)])

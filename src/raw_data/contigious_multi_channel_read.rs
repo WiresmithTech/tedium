@@ -2,8 +2,8 @@
 //!
 //!
 
-use crate::error::TdmsError;
 use crate::io::reader::TdmsReader;
+use crate::{error::TdmsError, io::data_types::TdmsStorageType};
 use std::{
     io::{Read, Seek},
     marker::PhantomData,
@@ -37,7 +37,10 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
     /// *ASSUMPTION*: All channels have the same number of values available. The spec
     /// doesn't enforce this but all clients have I have seen do.
     ///
-    pub fn read(&mut self, mut channels: RecordStructure<f64>) -> Result<usize, TdmsError> {
+    pub fn read<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordStructure<D>,
+    ) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
 
         let total_sub_blocks = self.block_size / channels.block_size() as u64;
@@ -52,9 +55,9 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
         Ok(length)
     }
 
-    fn read_sub_block(
+    fn read_sub_block<D: TdmsStorageType>(
         &mut self,
-        channels: &mut RecordStructure<'_, f64>,
+        channels: &mut RecordStructure<'_, D>,
     ) -> Result<usize, TdmsError> {
         let mut length = 0;
         for read_instruction in channels.read_instructions().iter_mut() {

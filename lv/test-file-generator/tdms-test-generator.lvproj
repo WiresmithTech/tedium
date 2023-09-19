@@ -12,6 +12,7 @@
 		<Property Name="server.vi.propertiesEnabled" Type="Bool">true</Property>
 		<Property Name="specify.custom.address" Type="Bool">false</Property>
 		<Item Name="create test file.vi" Type="VI" URL="../create test file.vi"/>
+		<Item Name="generate channel data type tests.vi" Type="VI" URL="../generate channel data type tests.vi"/>
 		<Item Name="generate structural test.vi" Type="VI" URL="../generate structural test.vi"/>
 		<Item Name="generate sub-block test.vi" Type="VI" URL="../generate sub-block test.vi"/>
 		<Item Name="get grouped data.vi" Type="VI" URL="../get grouped data.vi"/>

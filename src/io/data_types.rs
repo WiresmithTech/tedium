@@ -152,9 +152,13 @@ macro_rules! numeric_type {
     };
 }
 
+numeric_type!(i8, DataType::I8, &[DataType::I8]);
 numeric_type!(u8, DataType::U8, &[DataType::U8]);
+numeric_type!(i16, DataType::I16, &[DataType::I16]);
+numeric_type!(u16, DataType::U16, &[DataType::U16]);
 numeric_type!(i32, DataType::I32, &[DataType::I32]);
 numeric_type!(u32, DataType::U32, &[DataType::U32]);
+numeric_type!(i64, DataType::I64, &[DataType::I64]);
 numeric_type!(u64, DataType::U64, &[DataType::U64]);
 numeric_type!(
     f64,
@@ -254,7 +258,15 @@ mod tests {
         };
     }
 
+    test_formatting!(i8, -123);
+    test_formatting!(u8, 123);
+    test_formatting!(i16, -1234);
+    test_formatting!(u16, 1234);
+
     test_formatting!(i32, -12345);
     test_formatting!(u32, 12345);
+    test_formatting!(i64, -21343543253);
+    test_formatting!(u64, 4325465436536);
     test_formatting!(f64, 1234.1245);
+    test_formatting!(f32, 1234.1245);
 }
