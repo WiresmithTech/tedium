@@ -37,8 +37,23 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
     ///
     pub fn read(&mut self, mut channels: RecordStructure<f64>) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
-        let block_end = self.block_start + self.block_size;
 
+        let total_sub_blocks = self.block_size / channels.block_size() as u64;
+        println!("Found {total_sub_blocks} sub blocks",);
+
+        let mut length = 0;
+
+        for _ in 0..total_sub_blocks {
+            length += self.read_sub_block(&mut channels)?;
+        }
+
+        Ok(length)
+    }
+
+    fn read_sub_block(
+        &mut self,
+        channels: &mut RecordStructure<'_, f64>,
+    ) -> Result<usize, TdmsError> {
         let mut length = 0;
         for read_instruction in channels.read_instructions().iter_mut() {
             match &mut read_instruction.plan {
@@ -98,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn read_data_interleaved_single() {
+    fn read_data_contigious_single() {
         let mut buffer = create_test_buffer();
         let meta = create_test_meta_data(2);
 
@@ -116,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn read_data_interleaved_multi() {
+    fn read_data_contigous_multi() {
         let mut buffer = create_test_buffer();
         let meta = create_test_meta_data(4);
         let length = meta.first().unwrap().number_of_values as f64;
@@ -142,7 +157,39 @@ mod tests {
     }
 
     #[test]
-    fn read_data_interleaved_multi_different_lengths() {
+    fn read_data_contigous_multi_with_repeated_writes() {
+        let mut buffer = create_test_buffer();
+        let mut meta = create_test_meta_data(4);
+
+        //drop the number of writes to less than the number of reads to test it picking up
+        //repeates.
+        for channel in meta.iter_mut() {
+            channel.number_of_values = 2;
+        }
+        // This should result in:
+        // ch1: 0, 1, 8, 9
+        // ch2: 2, 3, 10, 11
+        // ch3: 4, 5, 12, 13
+        // ch4: 6, 7, 14, 15
+
+        let mut reader = MultiChannelContigousReader::<_, _>::new(
+            BigEndianReader::from_reader(&mut buffer),
+            0,
+            800,
+        );
+        let mut output_1: Vec<f64> = vec![0.0; 3];
+        let mut output_2: Vec<f64> = vec![0.0; 3];
+        let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
+        let read_plan =
+            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+
+        reader.read(read_plan).unwrap();
+        assert_eq!(output_1, vec![0.0, 1.0, 8.0]);
+        assert_eq!(output_2, vec![4.0, 5.0, 12.0]);
+    }
+
+    #[test]
+    fn read_data_contigious_multi_different_lengths() {
         let mut buffer = create_test_buffer();
         let meta = create_test_meta_data(4);
         let length = meta.first().unwrap().number_of_values as f64;

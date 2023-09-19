@@ -39,7 +39,7 @@ fn main() {
             .write_channels(
                 &paths_str[..],
                 &samples_to_write,
-                tdms_lib::DataLayout::Interleaved,
+                tdms_lib::DataLayout::Contigious,
             )
             .unwrap();
     }

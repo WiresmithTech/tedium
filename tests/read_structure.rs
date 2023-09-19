@@ -54,3 +54,14 @@ fn test_multi_channel_read_shorter() {
     assert_eq!(buffer0, expected0[0..read_length]);
     assert_eq!(buffer4, expected4[0..read_length]);
 }
+
+#[test]
+fn test_read_sub_blocks() {
+    let mut file = common::open_test_file();
+    let read_length = 2750;
+    let expected0 = test_data(0);
+    let mut buffer0 = vec![0.0; read_length];
+    file.read_channel("/'subblock'/'ch1'", &mut buffer0[..])
+        .unwrap();
+    assert_eq!(buffer0, expected0[0..read_length]);
+}

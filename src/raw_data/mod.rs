@@ -125,45 +125,7 @@ impl DataBlock {
         output: &mut [f64],
     ) -> Result<usize, TdmsError> {
         //first is element size, second is total size.
-        let channel_sizes: Vec<(u64, u64)> = self
-            .channels
-            .iter()
-            .map(|channel_layout| {
-                let element_size = 8; //only support doubles for testing.
-                let total_size = channel_layout.number_of_values * element_size;
-                (element_size, total_size)
-            })
-            .collect();
-
-        let (start_offset, step) = match self.layout {
-            DataLayout::Interleaved => {
-                let start_offset: u64 = channel_sizes.iter().take(channel_index).map(|e| e.0).sum();
-                let step =
-                    channel_sizes.iter().map(|e| e.0).sum::<u64>() - channel_sizes[channel_index].0;
-                (start_offset, step)
-            }
-            DataLayout::Contigious => {
-                let start_offset = channel_sizes.iter().take(channel_index).map(|e| e.1).sum();
-                (start_offset, 0)
-            }
-        };
-
-        match self.byte_order {
-            Endianess::Big => SingleChannelReader::<_, _>::new(
-                self.start + start_offset,
-                step,
-                self.channels[channel_index].number_of_values,
-                BigEndianReader::from_reader(reader),
-            )?
-            .read(output),
-            Endianess::Little => SingleChannelReader::<_, _>::new(
-                self.start + start_offset,
-                step,
-                self.channels[channel_index].number_of_values,
-                LittleEndianReader::from_reader(reader),
-            )?
-            .read(output),
-        }
+        self.read(reader, &mut [(channel_index, output)])
     }
 }
 

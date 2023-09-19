@@ -19,6 +19,16 @@ pub enum RecordEntryPlan<'a, T: 'a, I: Iterator<Item = &'a mut T>> {
     Read(I),
 }
 
+impl<'a, T: TdmsStorageType, I: Iterator<Item = &'a mut T>> RecordEntryPlan<'a, T, I> {
+    fn entry_size_bytes(&self) -> Option<usize> {
+        match self {
+            RecordEntryPlan::Skip(bytes) => Some(*bytes as usize),
+            RecordEntryPlan::SkipVariable => None,
+            RecordEntryPlan::Read(_) => Some(T::SIZE_BYTES),
+        }
+    }
+}
+
 /// Represents a record entry including read instructions and expected size per block.
 #[derive(Debug)]
 pub struct RecordEntry<'a, T: 'a> {
@@ -66,10 +76,27 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     pub fn row_size(&self) -> usize {
         self.0
             .iter()
-            .map(|entry| match entry.plan {
-                RecordEntryPlan::Read(_) => T::SIZE_BYTES,
-                RecordEntryPlan::Skip(bytes) => bytes as usize,
-                RecordEntryPlan::SkipVariable => todo!("Variable length records not yet supported"),
+            .map(|entry| match entry.plan.entry_size_bytes() {
+                Some(bytes) => bytes,
+                None => todo!("Variable length records not yet supported"),
+            })
+            .sum()
+    }
+
+    /// Get the size of the entire written block based on the structure.
+    ///
+    /// ## Panics
+    ///
+    /// This will panic if we have variable length records.
+    pub fn block_size(&self) -> usize {
+        self.0
+            .iter()
+            .map(|entry| {
+                entry
+                    .plan
+                    .entry_size_bytes()
+                    .expect("Variable length records not yet supported")
+                    * entry.length
             })
             .sum()
     }
@@ -264,5 +291,34 @@ mod tests {
             RecordStructure::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.row_size(), 20);
+    }
+
+    #[test]
+    fn test_returns_length_of_write_block() {
+        let channels = vec![
+            RawDataMeta {
+                data_type: DataType::DoubleFloat,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+            RawDataMeta {
+                data_type: DataType::I32,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+            RawDataMeta {
+                data_type: DataType::DoubleFloat,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+        ];
+        let mut out1 = vec![0i32; 1000];
+
+        let mut outputs: Vec<(usize, &mut [i32])> = vec![(1, &mut out1)];
+
+        let read_plan =
+            RecordStructure::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
+
+        assert_eq!(read_plan.block_size(), 20000);
     }
 }
