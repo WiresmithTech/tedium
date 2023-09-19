@@ -77,6 +77,14 @@ impl DataBlock {
         }
     }
 
+    /// Read the data from the block for the channels specified into the output slices.
+    ///
+    /// We assume all channels in the block have the same length and so return the maximum
+    /// samples read in a given channel. The spec allows this assumption to be broken
+    /// but no clients I have seen do.
+    ///
+    /// If an output slice for a channel has a length less than the number of samples it will stop
+    /// reading once the end of the slice is reached.
     pub fn read<'a, 'b>(
         &self,
         reader: &'a mut (impl Read + Seek),
@@ -119,6 +127,9 @@ impl DataBlock {
         }
     }
 
+    /// Read a single channel from the block.
+    ///
+    /// This is a simple wrapper around the `read` function for the common case of reading a single channel.
     pub fn read_single(
         &self,
         channel_index: usize,

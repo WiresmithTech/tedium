@@ -33,7 +33,9 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
 
     /// Read the data from the block for the channels specified into the output slices.
     ///
-    /// Returns the number of channels read in this block.
+    /// Returns the number of values read from the last read channel.
+    /// *ASSUMPTION*: All channels have the same number of values available. The spec
+    /// doesn't enforce this but all clients have I have seen do.
     ///
     pub fn read(&mut self, mut channels: RecordStructure<f64>) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;

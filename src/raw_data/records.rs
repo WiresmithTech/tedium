@@ -6,7 +6,7 @@
 
 use crate::{error::TdmsError, io::data_types::TdmsStorageType, meta_data::RawDataMeta};
 
-// An instruction on how to move through the record based on the read instructions.
+/// An instruction on how to move through the record based on the read instructions.
 ///
 /// It can only read one data type at a time.
 #[derive(Debug)]
@@ -229,6 +229,30 @@ mod tests {
                 DataType::U32
             ))
         ));
+    }
+
+    #[test]
+    fn test_does_not_error_on_different_but_compatible_types() {
+        let channels = vec![
+            RawDataMeta {
+                data_type: DataType::DoubleFloatWithUnit,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+            RawDataMeta {
+                data_type: DataType::DoubleFloatWithUnit,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            },
+        ];
+        let mut out1 = vec![0.0; 1000];
+
+        let mut outputs: Vec<(usize, &mut [f64])> = vec![(1, &mut out1)];
+
+        let read_plan_result =
+            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]);
+
+        assert!(matches!(read_plan_result, Ok(_)));
     }
 
     #[ignore = "Not yet implemented"]

@@ -33,10 +33,10 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
 
     /// Read the data from the block for the channels specified into the output slices.
     ///
-    /// Returns the number of channels read in this block.
+    /// Returns the number of values read in this block.
     ///
-    /// todo: what if the lengths of entries are different? Not really possible
-    /// to create but is possible in spec.
+    /// *ASSUMPTION*: All channels have the same number of values available. The spec
+    /// allows for different lengths but all clients have I have seen do not.
     pub fn read(&mut self, mut channels: RecordStructure<f64>) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
         let row_count = self.block_size as usize / channels.row_size();
