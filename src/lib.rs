@@ -15,10 +15,13 @@ use std::{
 use error::TdmsError;
 use index::{DataFormat, Index};
 use io::writer::{LittleEndianWriter, TdmsWriter};
-use meta_data::{MetaData, ObjectMetaData, PropertyValue, ToC};
-pub use paths::ObjectPath;
+use meta_data::{MetaData, ObjectMetaData, ToC};
 use raw_data::{MultiChannelSlice, WriteBlock};
 
+// Re-exports.
+pub use io::data_types::TdmsStorageType;
+pub use meta_data::PropertyValue;
+pub use paths::ObjectPath;
 pub use raw_data::DataLayout;
 
 pub struct TdmsFile {

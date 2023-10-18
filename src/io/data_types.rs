@@ -10,8 +10,9 @@ use num_derive::FromPrimitive;
 
 use crate::error::TdmsError;
 
-/// The DataTypeRaw enum's values match the binary representation of that
-/// type in tdms files.
+/// The data types that can be encoded into TDMS data.
+///
+/// The values are the codes used in the TDMS file.
 #[derive(Clone, Copy, Debug, FromPrimitive, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DataType {
