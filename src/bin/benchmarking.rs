@@ -1,5 +1,7 @@
 use std::{env::args, time::Instant};
 
+use tdms_lib::ObjectPath;
+
 /// Args
 /// 1. number of groups.
 /// 2. channels per group.
@@ -71,8 +73,8 @@ fn main() {
         .map(|group| {
             let paths = channels
                 .iter()
-                .map(|ch| format!("/{group}/{ch}"))
-                .collect::<Vec<String>>();
+                .map(|ch| ObjectPath::channel(group, ch))
+                .collect::<Vec<ObjectPath>>();
             read_file
                 .read_channels(&paths[..], &mut channel_outputs[..])
                 .unwrap();

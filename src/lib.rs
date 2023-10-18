@@ -3,6 +3,7 @@ mod error;
 mod index;
 mod io;
 mod meta_data;
+mod paths;
 mod raw_data;
 
 use std::{
@@ -15,6 +16,7 @@ use error::TdmsError;
 use index::{DataFormat, Index};
 use io::writer::{LittleEndianWriter, TdmsWriter};
 use meta_data::{MetaData, ObjectMetaData, PropertyValue, ToC};
+pub use paths::ObjectPath;
 use raw_data::{MultiChannelSlice, WriteBlock};
 
 pub use raw_data::DataLayout;
@@ -54,22 +56,19 @@ impl TdmsFile {
     }
 
     /// Read the property by name from the full object path.
-    ///
-    /// The object path is the internal representation. This function will be changed for ergonomics in the future.
-    /// For now use the format `/'group'/'channel'` where you do need the single quotes.
     pub fn read_property(
         &self,
-        object_path: &str,
+        object_path: &ObjectPath,
         property: &str,
     ) -> Result<Option<&PropertyValue>, TdmsError> {
         self.index.get_object_property(object_path, property)
     }
 
     /// Read all properties for the given object path.
-    ///
-    /// The object path is the internal representation. This function will be changed for ergonomics in the future.
-    /// For now use the format `/'group'/'channel'` where you do need the single quotes.
-    pub fn read_all_properties(&self, object_path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
+    pub fn read_all_properties(
+        &self,
+        object_path: &ObjectPath,
+    ) -> Option<Vec<(&String, &PropertyValue)>> {
         self.index.get_object_properties(object_path)
     }
 

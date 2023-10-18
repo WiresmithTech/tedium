@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use crate::error::TdmsError;
 use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, Segment};
+use crate::paths::ObjectPath;
 use crate::raw_data::DataBlock;
 
 /// A store for a given channel point to the data block with its data and the index within that.
@@ -247,30 +248,33 @@ impl Index {
             }
         }
     }
-    pub fn get_object_properties(&self, path: &str) -> Option<Vec<(&String, &PropertyValue)>> {
+    pub fn get_object_properties(
+        &self,
+        path: &ObjectPath,
+    ) -> Option<Vec<(&String, &PropertyValue)>> {
         self.objects
-            .get(path)
+            .get(path.path())
             .map(|object| object.get_all_properties())
     }
 
     pub fn get_object_property(
         &self,
-        path: &str,
+        path: &ObjectPath,
         property: &str,
     ) -> Result<Option<&PropertyValue>, TdmsError> {
         let property = self
             .objects
-            .get(path)
-            .ok_or_else(|| TdmsError::MissingObject(path.to_string()))?
+            .get(path.path())
+            .ok_or_else(|| TdmsError::MissingObject(path.to_static()))?
             .properties
             .get(property);
 
         Ok(property)
     }
 
-    pub fn get_channel_data_positions(&self, path: &str) -> Option<&[DataLocation]> {
+    pub fn get_channel_data_positions(&self, path: &ObjectPath) -> Option<&[DataLocation]> {
         self.objects
-            .get(path)
+            .get(path.path())
             .map(|object| &object.data_locations[..])
     }
 
@@ -365,23 +369,25 @@ mod tests {
         let mut index = Index::new();
         index.add_segment(segment);
 
-        let group_properties = index.get_object_properties("group").unwrap();
+        let group_properties = index.get_object_properties(&"group".into()).unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
-        let ch1_properties = index.get_object_properties("group/ch1").unwrap();
+        let ch1_properties = index.get_object_properties(&"group/ch1".into()).unwrap();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
         );
-        let ch2_properties = index.get_object_properties("group/ch2").unwrap();
+        let ch2_properties = index.get_object_properties(&"group/ch2".into()).unwrap();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[DataLocation {
@@ -389,7 +395,9 @@ mod tests {
                 channel_index: 0
             }]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[DataLocation {
@@ -703,12 +711,12 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let group_properties = index.get_object_properties("group").unwrap();
+        let group_properties = index.get_object_properties(&"group".into()).unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-52))]
         );
-        let ch1_properties = index.get_object_properties("group/ch1").unwrap();
+        let ch1_properties = index.get_object_properties(&"group/ch1".into()).unwrap();
         assert_eq!(
             ch1_properties,
             &[(&"Prop1".to_string(), &PropertyValue::I32(-2))]
@@ -767,23 +775,25 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let group_properties = index.get_object_properties("group").unwrap();
+        let group_properties = index.get_object_properties(&"group".into()).unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
-        let ch1_properties = index.get_object_properties("group/ch1").unwrap();
+        let ch1_properties = index.get_object_properties(&"group/ch1".into()).unwrap();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-2))]
         );
-        let ch2_properties = index.get_object_properties("group/ch2").unwrap();
+        let ch2_properties = index.get_object_properties(&"group/ch2".into()).unwrap();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -797,7 +807,9 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -859,7 +871,9 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -873,7 +887,9 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -935,7 +951,9 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -949,7 +967,9 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -1020,13 +1040,15 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let ch3_properties = index.get_object_properties("group/ch3").unwrap();
+        let ch3_properties = index.get_object_properties(&"group/ch3".into()).unwrap();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
         );
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -1040,7 +1062,9 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[
@@ -1054,7 +1078,9 @@ mod tests {
                 }
             ]
         );
-        let ch3_data = index.get_channel_data_positions("group/ch3").unwrap();
+        let ch3_data = index
+            .get_channel_data_positions(&"group/ch3".into())
+            .unwrap();
         assert_eq!(
             ch3_data,
             &[DataLocation {
@@ -1119,13 +1145,15 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let ch3_properties = index.get_object_properties("group/ch3").unwrap();
+        let ch3_properties = index.get_object_properties(&"group/ch3".into()).unwrap();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
         );
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[DataLocation {
@@ -1133,7 +1161,9 @@ mod tests {
                 channel_index: 0
             },]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[DataLocation {
@@ -1141,7 +1171,9 @@ mod tests {
                 channel_index: 1
             },]
         );
-        let ch3_data = index.get_channel_data_positions("group/ch3").unwrap();
+        let ch3_data = index
+            .get_channel_data_positions(&"group/ch3".into())
+            .unwrap();
         assert_eq!(
             ch3_data,
             &[DataLocation {
@@ -1223,7 +1255,9 @@ mod tests {
         index.add_segment(segment2);
         index.add_segment(segment3);
 
-        let ch1_data = index.get_channel_data_positions("group/ch1").unwrap();
+        let ch1_data = index
+            .get_channel_data_positions(&"group/ch1".into())
+            .unwrap();
         assert_eq!(
             ch1_data,
             &[
@@ -1237,7 +1271,9 @@ mod tests {
                 }
             ]
         );
-        let ch2_data = index.get_channel_data_positions("group/ch2").unwrap();
+        let ch2_data = index
+            .get_channel_data_positions(&"group/ch2".into())
+            .unwrap();
         assert_eq!(
             ch2_data,
             &[DataLocation {
@@ -1245,7 +1281,9 @@ mod tests {
                 channel_index: 1
             },]
         );
-        let ch3_data = index.get_channel_data_positions("group/ch3").unwrap();
+        let ch3_data = index
+            .get_channel_data_positions(&"group/ch3".into())
+            .unwrap();
         assert_eq!(
             ch3_data,
             &[

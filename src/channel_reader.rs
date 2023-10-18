@@ -1,3 +1,4 @@
+use crate::paths::ObjectPath;
 use crate::{error::TdmsError, index::DataLocation, io::data_types::TdmsStorageType, TdmsFile};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -38,13 +39,13 @@ impl ChannelProgress {
 impl TdmsFile {
     pub fn read_channel<D: TdmsStorageType>(
         &mut self,
-        object_path: &str,
+        object_path: &ObjectPath,
         output: &mut [D],
     ) -> Result<(), TdmsError> {
         let data_positions = self
             .index
             .get_channel_data_positions(object_path)
-            .ok_or_else(|| TdmsError::MissingObject(object_path.to_string()))?;
+            .ok_or_else(|| TdmsError::MissingObject(object_path.to_static()))?;
 
         let mut samples_read = 0;
 
@@ -53,7 +54,7 @@ impl TdmsFile {
                 .index
                 .get_data_block(location.data_block)
                 .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(object_path.to_string(), location.data_block)
+                    TdmsError::DataBlockNotFound(object_path.to_static(), location.data_block)
                 })?;
 
             samples_read += block.read_single(
@@ -70,9 +71,9 @@ impl TdmsFile {
         Ok(())
     }
 
-    pub fn read_channels<D: TdmsStorageType>(
+    pub fn read_channels<'a, D: TdmsStorageType>(
         &mut self,
-        paths: &[impl AsRef<str>],
+        paths: &[impl AsRef<ObjectPath<'a>>],
         output: &mut [&mut [D]],
     ) -> Result<(), TdmsError> {
         let channel_positions = paths
@@ -80,7 +81,7 @@ impl TdmsFile {
             .map(|object_path| {
                 self.index
                     .get_channel_data_positions(object_path.as_ref())
-                    .ok_or_else(|| TdmsError::MissingObject(object_path.as_ref().to_string()))
+                    .ok_or_else(|| TdmsError::MissingObject(object_path.as_ref().to_static()))
             })
             .collect::<Result<Vec<&[DataLocation]>, TdmsError>>()?;
 
@@ -96,10 +97,7 @@ impl TdmsFile {
                 .index
                 .get_data_block(location.data_block)
                 .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(
-                        String::from("Multichannel read"),
-                        location.data_block,
-                    )
+                    TdmsError::DataBlockNotFound(ObjectPath::UNSPECIFIED, location.data_block)
                 })?;
 
             let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
@@ -189,7 +187,7 @@ fn read_plan(channel_positions: &[&[DataLocation]]) -> Vec<MultiChannelLocation>
 
         // Empty iterator check.
         let Some(next_block) = next_block else {
-          return blocks;
+            return blocks;
         };
 
         //All out of range check.
@@ -203,7 +201,7 @@ fn read_plan(channel_positions: &[&[DataLocation]]) -> Vec<MultiChannelLocation>
             .map(|(locations, index)| {
                 let next_location = locations.get(*index);
                 let Some(next_location) = next_location else {
-                  return None;
+                    return None;
                 };
 
                 if next_location.data_block == next_block {
