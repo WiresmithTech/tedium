@@ -36,7 +36,7 @@ impl ChannelProgress {
     }
 }
 
-impl TdmsFile {
+impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFile<F> {
     pub fn read_channel<D: TdmsStorageType>(
         &mut self,
         object_path: &ObjectPath,

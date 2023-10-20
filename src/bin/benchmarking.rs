@@ -35,11 +35,13 @@ fn main() {
     let mut file = tdms_lib::TdmsFile::create(&path);
     let mut file_write = file.writer().unwrap();
     for group in groups.iter().cycle().take(writes_per_group * group_count) {
-        let paths: Vec<String> = channels.iter().map(|ch| format!("/{group}/{ch}")).collect();
-        let paths_str: Vec<&str> = paths.iter().map(|path| path.as_str()).collect();
+        let paths: Vec<ObjectPath> = channels
+            .iter()
+            .map(|ch| ObjectPath::channel(group, ch))
+            .collect();
         file_write
             .write_channels(
-                &paths_str[..],
+                &paths[..],
                 &samples_to_write,
                 tdms_lib::DataLayout::Contigious,
             )

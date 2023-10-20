@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tdms_lib::{DataLayout, TdmsFile};
+use tdms_lib::{DataLayout, ObjectPath, TdmsFile};
 
 fn main() {
     let mut temp_path = std::env::temp_dir();
@@ -15,7 +15,7 @@ fn main() {
     for _ in 0..10 {
         writer
             .write_channels(
-                &["/'Untitled'/'Time (ms)'"],
+                &[ObjectPath::channel("Untitled", "Time (ms)")],
                 &data[..],
                 DataLayout::Contigious,
             )

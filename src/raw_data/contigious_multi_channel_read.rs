@@ -44,7 +44,6 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
         self.reader.to_file_position(self.block_start)?;
 
         let total_sub_blocks = self.block_size / channels.block_size() as u64;
-        println!("Found {total_sub_blocks} sub blocks",);
 
         let mut length = 0;
 

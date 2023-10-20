@@ -8,7 +8,7 @@ mod raw_data;
 
 use std::{
     fs::File,
-    io::{Seek, SeekFrom},
+    io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
 
@@ -24,12 +24,13 @@ pub use meta_data::PropertyValue;
 pub use paths::ObjectPath;
 pub use raw_data::DataLayout;
 
-pub struct TdmsFile {
+#[derive(Debug)]
+pub struct TdmsFile<F: Write + Read + Seek + std::fmt::Debug> {
     index: index::Index,
-    file: File,
+    file: F,
 }
 
-impl TdmsFile {
+impl TdmsFile<File> {
     /// Load the file from the path. This step will load and index the metadata
     /// ready for access.
     pub fn load(path: &Path) -> Self {
@@ -53,8 +54,13 @@ impl TdmsFile {
 
     pub fn create(path: &Path) -> Self {
         let file = File::create(path).unwrap();
-        let index = Index::new();
+        Self::new(file)
+    }
+}
 
+impl<F: Write + Read + Seek + std::fmt::Debug> TdmsFile<F> {
+    pub fn new(file: F) -> Self {
+        let index = Index::new();
         Self { index, file }
     }
 
@@ -75,28 +81,28 @@ impl TdmsFile {
         self.index.get_object_properties(object_path)
     }
 
-    pub fn writer<'a>(
-        &'a mut self,
-    ) -> Result<TdmsFileWriter<'a, LittleEndianWriter<&'a mut File>>, TdmsError> {
+    pub fn writer(&mut self) -> Result<TdmsFileWriter<F, LittleEndianWriter<&mut F>>, TdmsError> {
         //make sure we are at the end.
         self.file.seek(SeekFrom::End(0))?;
         Ok(TdmsFileWriter {
             index: &mut self.index,
             writer: LittleEndianWriter::from_writer(&mut self.file),
+            _file: std::marker::PhantomData,
         })
     }
 }
 
-pub struct TdmsFileWriter<'a, W: TdmsWriter<&'a mut File>> {
+pub struct TdmsFileWriter<'a, F: Write + 'a, W: TdmsWriter<&'a mut F>> {
     index: &'a mut Index,
     writer: W,
+    _file: std::marker::PhantomData<F>,
 }
 
-impl<'a, W: TdmsWriter<&'a mut File>> TdmsFileWriter<'a, W> {
-    pub fn write_channels(
+impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
+    pub fn write_channels<D: TdmsStorageType>(
         &mut self,
-        object_paths: &[&str],
-        values: &[f64],
+        object_paths: &[impl AsRef<ObjectPath<'a>>],
+        values: &[D],
         layout: DataLayout,
     ) -> Result<(), TdmsError> {
         let raw_data = MultiChannelSlice::from_slice(values, object_paths.len())?;
@@ -107,7 +113,7 @@ impl<'a, W: TdmsWriter<&'a mut File>> TdmsFileWriter<'a, W> {
 
         let channels = object_paths
             .into_iter()
-            .map(|name| *name) //surely a way to avoid this.
+            .map(|path| path.as_ref().path()) //surely a way to avoid this.
             .zip(data_structures)
             .collect();
 
