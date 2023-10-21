@@ -33,8 +33,8 @@ pub struct TdmsFile<F: Write + Read + Seek + std::fmt::Debug> {
 impl TdmsFile<File> {
     /// Load the file from the path. This step will load and index the metadata
     /// ready for access.
-    pub fn load(path: &Path) -> Self {
-        let mut file = File::open(path).unwrap();
+    pub fn load(path: &Path) -> Result<Self, TdmsError> {
+        let mut file = File::options().read(true).write(true).open(path)?;
         let file_size = file.metadata().unwrap().len();
         let mut index = Index::new();
 
@@ -49,12 +49,16 @@ impl TdmsFile<File> {
             }
         }
 
-        Self { index, file }
+        Ok(Self { index, file })
     }
 
-    pub fn create(path: &Path) -> Self {
-        let file = File::create(path).unwrap();
-        Self::new(file)
+    pub fn create(path: &Path) -> Result<Self, TdmsError> {
+        let file = File::options()
+            .write(true)
+            .create(true)
+            .read(true)
+            .open(path)?;
+        Ok(Self::new(file))
     }
 }
 

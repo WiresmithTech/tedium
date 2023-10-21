@@ -1,10 +1,12 @@
+#![allow(dead_code)]
+
 use std::{fs::File, io::Cursor, path::PathBuf};
 use tdms_lib::TdmsFile;
 
 /// Open the test file assuming this is called from the root of the project.
 pub fn open_test_file() -> TdmsFile<File> {
     let path = PathBuf::from("tests/tdms-test-file.tdms");
-    TdmsFile::load(&path)
+    TdmsFile::load(&path).unwrap()
 }
 
 pub fn get_empty_file() -> TdmsFile<Cursor<Vec<u8>>> {
