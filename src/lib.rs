@@ -106,7 +106,7 @@ pub struct TdmsFileWriter<'a, F: Write + 'a, W: TdmsWriter<&'a mut F>> {
 impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
     pub fn write_channels<D: TdmsStorageType>(
         &mut self,
-        channels: &[impl AsRef<ChannelPath<'a>>],
+        channels: &[impl AsRef<ChannelPath>],
         values: &[D],
         layout: DataLayout,
     ) -> Result<(), TdmsError> {

@@ -340,7 +340,7 @@ mod tests {
             meta_data: Some(MetaData {
                 objects: vec![
                     ObjectMetaData {
-                        path: "group".to_string(),
+                        path: "/'group'".to_string(),
                         properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
                         raw_data_index: RawDataIndex::None,
                     },
@@ -369,7 +369,9 @@ mod tests {
         let mut index = Index::new();
         index.add_segment(segment);
 
-        let group_properties = index.get_object_properties(&"group".into()).unwrap();
+        let group_properties = index
+            .get_object_properties(&PropertyPath::group("group"))
+            .unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
@@ -698,7 +700,7 @@ mod tests {
             meta_data: Some(MetaData {
                 objects: vec![
                     ObjectMetaData {
-                        path: "group".to_string(),
+                        path: "/'group'".to_string(),
                         properties: vec![("Prop".to_string(), PropertyValue::I32(-52))],
                         raw_data_index: RawDataIndex::None,
                     },
@@ -715,7 +717,9 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let group_properties = index.get_object_properties(&"group".into()).unwrap();
+        let group_properties = index
+            .get_object_properties(&PropertyPath::group("group"))
+            .unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-52))]
@@ -739,7 +743,7 @@ mod tests {
             meta_data: Some(MetaData {
                 objects: vec![
                     ObjectMetaData {
-                        path: "group".to_string(),
+                        path: "/'group'".to_string(),
                         properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
                         raw_data_index: RawDataIndex::None,
                     },
@@ -781,7 +785,9 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let group_properties = index.get_object_properties(&"group".into()).unwrap();
+        let group_properties = index
+            .get_object_properties(&PropertyPath::group("group"))
+            .unwrap();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]

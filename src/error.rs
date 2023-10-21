@@ -22,7 +22,7 @@ pub enum TdmsError {
     #[error("Attempted to read header where no header exists. Bytes: {0:X?}")]
     HeaderPatternNotMatched([u8; 4]),
     #[error("Tried to access a datablock that doesn't exist when reading channel: {0}")]
-    DataBlockNotFound(ChannelPath<'static>, usize),
+    DataBlockNotFound(ChannelPath, usize),
     #[error("The data block has length {0} which is not divisible by the number of channels: {1}")]
     BadDataBlockLength(usize, usize),
     #[error("Attempting to read a channel or property of type {0} as type {1}")]

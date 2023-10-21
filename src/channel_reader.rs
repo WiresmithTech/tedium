@@ -54,7 +54,7 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
                 .index
                 .get_data_block(location.data_block)
                 .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(channel.to_static(), location.data_block)
+                    TdmsError::DataBlockNotFound(channel.clone(), location.data_block)
                 })?;
 
             samples_read += block.read_single(
@@ -73,7 +73,7 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
 
     pub fn read_channels<'a, D: TdmsStorageType>(
         &mut self,
-        channels: &[impl AsRef<ChannelPath<'a>>],
+        channels: &[impl AsRef<ChannelPath>],
         output: &mut [&mut [D]],
     ) -> Result<(), TdmsError> {
         let channel_positions = channels
@@ -97,7 +97,10 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
                 .index
                 .get_data_block(location.data_block)
                 .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(ChannelPath::UNSPECIFIED, location.data_block)
+                    TdmsError::DataBlockNotFound(
+                        ChannelPath::new("MIXED", "MIXED"),
+                        location.data_block,
+                    )
                 })?;
 
             let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
