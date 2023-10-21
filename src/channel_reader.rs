@@ -1,4 +1,4 @@
-use crate::paths::ObjectPath;
+use crate::paths::ChannelPath;
 use crate::{error::TdmsError, index::DataLocation, io::data_types::TdmsStorageType, TdmsFile};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -39,13 +39,13 @@ impl ChannelProgress {
 impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFile<F> {
     pub fn read_channel<D: TdmsStorageType>(
         &mut self,
-        object_path: &ObjectPath,
+        channel: &ChannelPath,
         output: &mut [D],
     ) -> Result<(), TdmsError> {
         let data_positions = self
             .index
-            .get_channel_data_positions(object_path)
-            .ok_or_else(|| TdmsError::MissingObject(object_path.to_static()))?;
+            .get_channel_data_positions(channel)
+            .ok_or_else(|| TdmsError::MissingObject(channel.path().to_owned()))?;
 
         let mut samples_read = 0;
 
@@ -54,7 +54,7 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
                 .index
                 .get_data_block(location.data_block)
                 .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(object_path.to_static(), location.data_block)
+                    TdmsError::DataBlockNotFound(channel.to_static(), location.data_block)
                 })?;
 
             samples_read += block.read_single(
@@ -73,15 +73,15 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
 
     pub fn read_channels<'a, D: TdmsStorageType>(
         &mut self,
-        paths: &[impl AsRef<ObjectPath<'a>>],
+        channels: &[impl AsRef<ChannelPath<'a>>],
         output: &mut [&mut [D]],
     ) -> Result<(), TdmsError> {
-        let channel_positions = paths
+        let channel_positions = channels
             .iter()
-            .map(|object_path| {
+            .map(|channel| {
                 self.index
-                    .get_channel_data_positions(object_path.as_ref())
-                    .ok_or_else(|| TdmsError::MissingObject(object_path.as_ref().to_static()))
+                    .get_channel_data_positions(channel.as_ref())
+                    .ok_or_else(|| TdmsError::MissingObject(channel.as_ref().path().to_owned()))
             })
             .collect::<Result<Vec<&[DataLocation]>, TdmsError>>()?;
 
@@ -97,7 +97,7 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
                 .index
                 .get_data_block(location.data_block)
                 .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(ObjectPath::UNSPECIFIED, location.data_block)
+                    TdmsError::DataBlockNotFound(ChannelPath::UNSPECIFIED, location.data_block)
                 })?;
 
             let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);

@@ -21,7 +21,7 @@ use raw_data::{MultiChannelSlice, WriteBlock};
 
 // Re-exports.
 pub use io::data_types::TdmsStorageType;
-pub use paths::ObjectPath;
+pub use paths::{ChannelPath, PropertyPath};
 pub use properties::PropertyValue;
 pub use raw_data::DataLayout;
 
@@ -72,7 +72,7 @@ impl<F: Write + Read + Seek + std::fmt::Debug> TdmsFile<F> {
     /// Read the property by name from the full object path.
     pub fn read_property(
         &self,
-        object_path: &ObjectPath,
+        object_path: &PropertyPath,
         property: &str,
     ) -> Result<Option<&PropertyValue>, TdmsError> {
         self.index.get_object_property(object_path, property)
@@ -81,7 +81,7 @@ impl<F: Write + Read + Seek + std::fmt::Debug> TdmsFile<F> {
     /// Read all properties for the given object path.
     pub fn read_all_properties(
         &self,
-        object_path: &ObjectPath,
+        object_path: &PropertyPath,
     ) -> Option<Vec<(&String, &PropertyValue)>> {
         self.index.get_object_properties(object_path)
     }
@@ -106,17 +106,17 @@ pub struct TdmsFileWriter<'a, F: Write + 'a, W: TdmsWriter<&'a mut F>> {
 impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
     pub fn write_channels<D: TdmsStorageType>(
         &mut self,
-        object_paths: &[impl AsRef<ObjectPath<'a>>],
+        channels: &[impl AsRef<ChannelPath<'a>>],
         values: &[D],
         layout: DataLayout,
     ) -> Result<(), TdmsError> {
-        let raw_data = MultiChannelSlice::from_slice(values, object_paths.len())?;
+        let raw_data = MultiChannelSlice::from_slice(values, channels.len())?;
         let data_structures = raw_data
             .data_structure()
             .into_iter()
             .map(DataFormat::RawData);
 
-        let channels = object_paths
+        let channels = channels
             .iter()
             .map(|path| path.as_ref().path()) //surely a way to avoid this.
             .zip(data_structures)

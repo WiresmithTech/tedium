@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::io::data_types::DataType;
-use crate::paths::ObjectPath;
+use crate::paths::{ChannelPath, ObjectPathOwned};
 
 #[derive(Error, Debug)]
 pub enum TdmsError {
@@ -10,7 +10,7 @@ pub enum TdmsError {
     #[error("Index reader error")]
     IndexReaderError(#[source] Box<dyn std::error::Error>),
     #[error("Group or Channel not found in index. {0}")]
-    MissingObject(ObjectPath<'static>),
+    MissingObject(ObjectPathOwned),
     #[error("IO Error")]
     IoError(#[from] std::io::Error),
     #[error("String formatting error")]
@@ -22,7 +22,7 @@ pub enum TdmsError {
     #[error("Attempted to read header where no header exists. Bytes: {0:X?}")]
     HeaderPatternNotMatched([u8; 4]),
     #[error("Tried to access a datablock that doesn't exist when reading channel: {0}")]
-    DataBlockNotFound(ObjectPath<'static>, usize),
+    DataBlockNotFound(ChannelPath<'static>, usize),
     #[error("The data block has length {0} which is not divisible by the number of channels: {1}")]
     BadDataBlockLength(usize, usize),
     #[error("Attempting to read a channel or property of type {0} as type {1}")]

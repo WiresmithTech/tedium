@@ -1,6 +1,6 @@
 mod common;
 
-use tdms_lib::ObjectPath;
+use tdms_lib::ChannelPath;
 
 fn test_data(channel_index: usize) -> Vec<f64> {
     let samples = match channel_index {
@@ -16,7 +16,7 @@ fn test_single_channel_read() {
     let mut file = common::open_test_file();
     let expected = test_data(2);
     let mut buffer = vec![0.0; expected.len()];
-    file.read_channel(&ObjectPath::channel("structure", "ch3"), &mut buffer[..])
+    file.read_channel(&ChannelPath::new("structure", "ch3"), &mut buffer[..])
         .unwrap();
 
     assert_eq!(buffer, expected);
@@ -31,8 +31,8 @@ fn test_multi_channel_read_same_length() {
     let mut buffer2 = vec![0.0; expected2.len()];
     file.read_channels(
         &[
-            &ObjectPath::channel("structure", "ch1"),
-            &ObjectPath::channel("structure", "ch3"),
+            &ChannelPath::new("structure", "ch1"),
+            &ChannelPath::new("structure", "ch3"),
         ],
         &mut [&mut buffer0[..], &mut buffer2[..]],
     )
@@ -52,8 +52,8 @@ fn test_multi_channel_read_shorter() {
     let mut buffer4 = vec![0.0; read_length];
     file.read_channels(
         &[
-            &ObjectPath::channel("structure", "ch1"),
-            &ObjectPath::channel("structure", "ch5"),
+            &ChannelPath::new("structure", "ch1"),
+            &ChannelPath::new("structure", "ch5"),
         ],
         &mut [&mut buffer0[..], &mut buffer4[..]],
     )
@@ -69,7 +69,7 @@ fn test_read_sub_blocks() {
     let read_length = 2750;
     let expected0 = test_data(0);
     let mut buffer0 = vec![0.0; read_length];
-    file.read_channel(&ObjectPath::channel("subblock", "ch1"), &mut buffer0[..])
+    file.read_channel(&ChannelPath::new("subblock", "ch1"), &mut buffer0[..])
         .unwrap();
     assert_eq!(buffer0, expected0[0..read_length]);
 }
@@ -81,7 +81,7 @@ macro_rules! read_datatype_test {
         let mut buffer = vec![0 as $type; 100];
         $file
             .read_channel(
-                &ObjectPath::channel("datatypes", channel_name),
+                &ChannelPath::new("datatypes", channel_name),
                 &mut buffer[..],
             )
             .unwrap();

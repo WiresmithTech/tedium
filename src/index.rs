@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use crate::error::TdmsError;
 use crate::meta_data::{ObjectMetaData, RawDataIndex, RawDataMeta, Segment};
-use crate::paths::ObjectPath;
+use crate::paths::{ChannelPath, PropertyPath};
 use crate::raw_data::DataBlock;
 use crate::PropertyValue;
 
@@ -251,7 +251,7 @@ impl Index {
     }
     pub fn get_object_properties(
         &self,
-        path: &ObjectPath,
+        path: &PropertyPath,
     ) -> Option<Vec<(&String, &PropertyValue)>> {
         self.objects
             .get(path.path())
@@ -260,20 +260,20 @@ impl Index {
 
     pub fn get_object_property(
         &self,
-        path: &ObjectPath,
+        path: &PropertyPath,
         property: &str,
     ) -> Result<Option<&PropertyValue>, TdmsError> {
         let property = self
             .objects
             .get(path.path())
-            .ok_or_else(|| TdmsError::MissingObject(path.to_static()))?
+            .ok_or_else(|| TdmsError::MissingObject(path.path().to_owned()))?
             .properties
             .get(property);
 
         Ok(property)
     }
 
-    pub fn get_channel_data_positions(&self, path: &ObjectPath) -> Option<&[DataLocation]> {
+    pub fn get_channel_data_positions(&self, path: &ChannelPath) -> Option<&[DataLocation]> {
         self.objects
             .get(path.path())
             .map(|object| &object.data_locations[..])
@@ -345,7 +345,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -354,7 +354,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -374,19 +374,23 @@ mod tests {
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
-        let ch1_properties = index.get_object_properties(&"group/ch1".into()).unwrap();
+        let ch1_properties = index
+            .get_object_properties(&ChannelPath::new("group", "ch1").as_ref())
+            .unwrap();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
         );
-        let ch2_properties = index.get_object_properties(&"group/ch2".into()).unwrap();
+        let ch2_properties = index
+            .get_object_properties(&ChannelPath::new("group", "ch2").as_ref())
+            .unwrap();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -396,7 +400,7 @@ mod tests {
             }]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -421,7 +425,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -430,7 +434,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -482,7 +486,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -491,7 +495,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -510,12 +514,12 @@ mod tests {
             meta_data: Some(MetaData {
                 objects: vec![
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![],
                         raw_data_index: RawDataIndex::MatchPrevious,
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![],
                         raw_data_index: RawDataIndex::MatchPrevious,
                     },
@@ -563,7 +567,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -572,7 +576,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -591,12 +595,12 @@ mod tests {
             meta_data: Some(MetaData {
                 objects: vec![
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![],
                         raw_data_index: RawDataIndex::MatchPrevious,
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![],
                         raw_data_index: RawDataIndex::MatchPrevious,
                     },
@@ -666,7 +670,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -675,7 +679,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -699,7 +703,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::None,
                     },
@@ -716,7 +720,9 @@ mod tests {
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-52))]
         );
-        let ch1_properties = index.get_object_properties(&"group/ch1".into()).unwrap();
+        let ch1_properties = index
+            .get_object_properties(ChannelPath::new("group", "ch1").as_ref())
+            .unwrap();
         assert_eq!(
             ch1_properties,
             &[(&"Prop1".to_string(), &PropertyValue::I32(-2))]
@@ -738,7 +744,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -747,7 +753,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -764,7 +770,7 @@ mod tests {
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
-                    path: "group/ch1".to_string(),
+                    path: "/'group'/'ch1'".to_string(),
                     properties: vec![("Prop1".to_string(), PropertyValue::I32(-2))],
                     raw_data_index: RawDataIndex::MatchPrevious,
                 }],
@@ -780,19 +786,23 @@ mod tests {
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
-        let ch1_properties = index.get_object_properties(&"group/ch1".into()).unwrap();
+        let ch1_properties = index
+            .get_object_properties(ChannelPath::new("group", "ch1").as_ref())
+            .unwrap();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-2))]
         );
-        let ch2_properties = index.get_object_properties(&"group/ch2".into()).unwrap();
+        let ch2_properties = index
+            .get_object_properties(ChannelPath::new("group", "ch2").as_ref())
+            .unwrap();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
         );
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -808,7 +818,7 @@ mod tests {
             ]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -840,7 +850,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -849,7 +859,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -872,7 +882,7 @@ mod tests {
         index.add_segment(segment2);
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -888,7 +898,7 @@ mod tests {
             ]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -920,7 +930,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -929,7 +939,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -952,7 +962,7 @@ mod tests {
         index.add_segment(segment2);
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -968,7 +978,7 @@ mod tests {
             ]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -999,7 +1009,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1008,7 +1018,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1025,7 +1035,7 @@ mod tests {
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
-                    path: "group/ch3".to_string(),
+                    path: "/'group'/'ch3'".to_string(),
                     properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
                         data_type: DataType::DoubleFloat,
@@ -1040,14 +1050,16 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let ch3_properties = index.get_object_properties(&"group/ch3".into()).unwrap();
+        let ch3_properties = index
+            .get_object_properties(ChannelPath::new("group", "ch3").as_ref())
+            .unwrap();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
         );
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -1063,7 +1075,7 @@ mod tests {
             ]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -1079,7 +1091,7 @@ mod tests {
             ]
         );
         let ch3_data = index
-            .get_channel_data_positions(&"group/ch3".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch3"))
             .unwrap();
         assert_eq!(
             ch3_data,
@@ -1104,7 +1116,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1113,7 +1125,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1130,7 +1142,7 @@ mod tests {
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
-                    path: "group/ch3".to_string(),
+                    path: "/'group'/'ch3'".to_string(),
                     properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
                         data_type: DataType::DoubleFloat,
@@ -1145,14 +1157,16 @@ mod tests {
         index.add_segment(segment);
         index.add_segment(segment2);
 
-        let ch3_properties = index.get_object_properties(&"group/ch3".into()).unwrap();
+        let ch3_properties = index
+            .get_object_properties(ChannelPath::new("group", "ch3").as_ref())
+            .unwrap();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
         );
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -1162,7 +1176,7 @@ mod tests {
             },]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -1172,7 +1186,7 @@ mod tests {
             },]
         );
         let ch3_data = index
-            .get_channel_data_positions(&"group/ch3".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch3"))
             .unwrap();
         assert_eq!(
             ch3_data,
@@ -1197,7 +1211,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1206,7 +1220,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1223,7 +1237,7 @@ mod tests {
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
-                    path: "group/ch3".to_string(),
+                    path: "/'group'/'ch3'".to_string(),
                     properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
                         data_type: DataType::DoubleFloat,
@@ -1239,7 +1253,7 @@ mod tests {
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
-                    path: "group/ch1".to_string(),
+                    path: "/'group'/'ch1'".to_string(),
                     properties: vec![("Prop3".to_string(), PropertyValue::I32(-3))],
                     raw_data_index: RawDataIndex::RawData(RawDataMeta {
                         data_type: DataType::DoubleFloat,
@@ -1256,7 +1270,7 @@ mod tests {
         index.add_segment(segment3);
 
         let ch1_data = index
-            .get_channel_data_positions(&"group/ch1".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
             .unwrap();
         assert_eq!(
             ch1_data,
@@ -1272,7 +1286,7 @@ mod tests {
             ]
         );
         let ch2_data = index
-            .get_channel_data_positions(&"group/ch2".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
             .unwrap();
         assert_eq!(
             ch2_data,
@@ -1282,7 +1296,7 @@ mod tests {
             },]
         );
         let ch3_data = index
-            .get_channel_data_positions(&"group/ch3".into())
+            .get_channel_data_positions(&ChannelPath::new("group", "ch3"))
             .unwrap();
         assert_eq!(
             ch3_data,
@@ -1305,7 +1319,7 @@ mod tests {
 
         let channels = vec![
             (
-                "group/ch1",
+                "/'group'/'ch1'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1313,7 +1327,7 @@ mod tests {
                 }),
             ),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1326,7 +1340,7 @@ mod tests {
 
         let expected_format = vec![
             (
-                "group/ch1",
+                "/'group'/'ch1'",
                 RawDataIndex::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1334,7 +1348,7 @@ mod tests {
                 }),
             ),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 RawDataIndex::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1360,7 +1374,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1369,7 +1383,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1386,7 +1400,7 @@ mod tests {
 
         let channels = vec![
             (
-                "group/ch1",
+                "/'group'/'ch1'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1394,7 +1408,7 @@ mod tests {
                 }),
             ),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1406,8 +1420,8 @@ mod tests {
         assert_eq!(matches, true);
 
         let expected_format = vec![
-            ("group/ch1", RawDataIndex::MatchPrevious),
-            ("group/ch2", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch1'", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch2'", RawDataIndex::MatchPrevious),
         ];
 
         assert_eq!(data_format, expected_format);
@@ -1427,7 +1441,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1436,7 +1450,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1455,12 +1469,12 @@ mod tests {
             meta_data: Some(MetaData {
                 objects: vec![
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![],
                         raw_data_index: RawDataIndex::MatchPrevious,
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![],
                         raw_data_index: RawDataIndex::MatchPrevious,
                     },
@@ -1474,7 +1488,7 @@ mod tests {
 
         let channels = vec![
             (
-                "group/ch1",
+                "/'group'/'ch1'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1482,7 +1496,7 @@ mod tests {
                 }),
             ),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1494,8 +1508,8 @@ mod tests {
         assert_eq!(matches, true);
 
         let expected_format = vec![
-            ("group/ch1", RawDataIndex::MatchPrevious),
-            ("group/ch2", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch1'", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch2'", RawDataIndex::MatchPrevious),
         ];
 
         assert_eq!(data_format, expected_format);
@@ -1515,7 +1529,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1524,7 +1538,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1541,7 +1555,7 @@ mod tests {
 
         let channels = vec![
             (
-                "group/ch1",
+                "/'group'/'ch1'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1549,7 +1563,7 @@ mod tests {
                 }),
             ),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 2000,
@@ -1561,9 +1575,9 @@ mod tests {
         assert_eq!(matches, true);
 
         let expected_format = vec![
-            ("group/ch1", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch1'", RawDataIndex::MatchPrevious),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 RawDataIndex::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 2000,
@@ -1589,7 +1603,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1598,7 +1612,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1670,7 +1684,7 @@ mod tests {
                         raw_data_index: RawDataIndex::None,
                     },
                     ObjectMetaData {
-                        path: "group/ch1".to_string(),
+                        path: "/'group'/'ch1'".to_string(),
                         properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1679,7 +1693,7 @@ mod tests {
                         }),
                     },
                     ObjectMetaData {
-                        path: "group/ch2".to_string(),
+                        path: "/'group'/'ch2'".to_string(),
                         properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
                         raw_data_index: RawDataIndex::RawData(RawDataMeta {
                             data_type: DataType::DoubleFloat,
@@ -1730,7 +1744,7 @@ mod tests {
 
         let channels = vec![
             (
-                "group/ch1",
+                "/'group'/'ch1'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1738,7 +1752,7 @@ mod tests {
                 }),
             ),
             (
-                "group/ch2",
+                "/'group'/'ch2'",
                 DataFormat::RawData(RawDataMeta {
                     data_type: DataType::DoubleFloat,
                     number_of_values: 1000,
@@ -1750,8 +1764,8 @@ mod tests {
         assert_eq!(matches, false);
 
         let expected_format = vec![
-            ("group/ch1", RawDataIndex::MatchPrevious),
-            ("group/ch2", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch1'", RawDataIndex::MatchPrevious),
+            ("/'group'/'ch2'", RawDataIndex::MatchPrevious),
         ];
 
         assert_eq!(data_format, expected_format);

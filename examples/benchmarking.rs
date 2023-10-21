@@ -1,7 +1,7 @@
 //! This example is designed to mimic the LabVIEW speed test examples
 //! for comparison and also as a consistent example of the best speed practices.
 
-use tdms_lib::{DataLayout, ObjectPath, TdmsFile};
+use tdms_lib::{ChannelPath, DataLayout, TdmsFile};
 
 const WRITE_BLOCK_SIZE: usize = 1024 * 1024; // 1MB
 const WRITE_PASSES: usize = 1000;
@@ -23,7 +23,7 @@ fn main() {
     for _ in 0..WRITE_PASSES {
         writer
             .write_channels(
-                &[ObjectPath::channel("Benchmark", "Data")],
+                &[ChannelPath::new("Benchmark", "Data")],
                 &data[..],
                 DataLayout::Contigious,
             )
@@ -44,11 +44,8 @@ fn main() {
     //TODO: This isn't moving through the file as we lack a random access read.
     let start = std::time::Instant::now();
     for _ in 0..READ_PASSES {
-        file.read_channel(
-            &ObjectPath::channel("Benchmark", "Data"),
-            &mut read_buffer[..],
-        )
-        .unwrap();
+        file.read_channel(&ChannelPath::new("Benchmark", "Data"), &mut read_buffer[..])
+            .unwrap();
     }
     let time = start.elapsed();
     println!("Read in {time:?}");

@@ -3,7 +3,7 @@
 mod common;
 
 use common::get_empty_file;
-use tdms_lib::{DataLayout, ObjectPath};
+use tdms_lib::{ChannelPath, DataLayout};
 
 #[test]
 fn test_multi_channel_write_interleaved() {
@@ -14,8 +14,8 @@ fn test_multi_channel_write_interleaved() {
     writer
         .write_channels(
             &[
-                &ObjectPath::channel("structure", "ch1"),
-                &ObjectPath::channel("structure", "ch2"),
+                &ChannelPath::new("structure", "ch1"),
+                &ChannelPath::new("structure", "ch2"),
             ],
             &data[..],
             DataLayout::Interleaved,
@@ -25,10 +25,10 @@ fn test_multi_channel_write_interleaved() {
     drop(writer);
 
     let mut buffer = vec![0.0f64; 3];
-    file.read_channel(&ObjectPath::channel("structure", "ch1"), &mut buffer[..])
+    file.read_channel(&ChannelPath::new("structure", "ch1"), &mut buffer[..])
         .unwrap();
     assert_eq!(buffer, vec![1.0, 3.0, 5.0]);
-    file.read_channel(&ObjectPath::channel("structure", "ch2"), &mut buffer[..])
+    file.read_channel(&ChannelPath::new("structure", "ch2"), &mut buffer[..])
         .unwrap();
     assert_eq!(buffer, vec![2.0, 4.0, 6.0]);
 }
@@ -42,8 +42,8 @@ fn test_multi_channel_write_contigious() {
     writer
         .write_channels(
             &[
-                &ObjectPath::channel("structure", "ch1"),
-                &ObjectPath::channel("structure", "ch2"),
+                &ChannelPath::new("structure", "ch1"),
+                &ChannelPath::new("structure", "ch2"),
             ],
             &data[..],
             DataLayout::Contigious,
@@ -53,18 +53,18 @@ fn test_multi_channel_write_contigious() {
     drop(writer);
 
     let mut buffer = vec![0.0f64; 3];
-    file.read_channel(&ObjectPath::channel("structure", "ch1"), &mut buffer[..])
+    file.read_channel(&ChannelPath::new("structure", "ch1"), &mut buffer[..])
         .unwrap();
     assert_eq!(buffer, vec![1.0, 2.0, 3.0]);
-    file.read_channel(&ObjectPath::channel("structure", "ch2"), &mut buffer[..])
+    file.read_channel(&ChannelPath::new("structure", "ch2"), &mut buffer[..])
         .unwrap();
     assert_eq!(buffer, vec![4.0, 5.0, 6.0]);
 }
 
 #[test]
 fn test_fragmented_write() {
-    let channel1 = ObjectPath::channel("structure", "ch1");
-    let channel2 = ObjectPath::channel("structure", "ch2");
+    let channel1 = ChannelPath::new("structure", "ch1");
+    let channel2 = ChannelPath::new("structure", "ch2");
 
     let mut file = get_empty_file();
     let mut writer = file.writer().unwrap();
@@ -91,8 +91,8 @@ fn test_fragmented_write() {
 
 #[test]
 fn test_repeated_writes() {
-    let channel1 = ObjectPath::channel("structure", "ch1");
-    let channel2 = ObjectPath::channel("structure", "ch2");
+    let channel1 = ChannelPath::new("structure", "ch1");
+    let channel2 = ChannelPath::new("structure", "ch2");
 
     let mut file = get_empty_file();
     let mut writer = file.writer().unwrap();
@@ -120,7 +120,7 @@ fn test_repeated_writes() {
 macro_rules! read_datatype_test {
     ($file: ident, $type: ty) => {
         let channel_name = stringify!($type);
-        let channel_path = ObjectPath::channel("datatypes", channel_name);
+        let channel_path = ChannelPath::new("datatypes", channel_name);
         let expected = (0..100).map(|value| value as $type).collect::<Vec<$type>>();
 
         let mut writer = $file.writer().unwrap();
@@ -132,7 +132,7 @@ macro_rules! read_datatype_test {
         let mut buffer = vec![0 as $type; 100];
         $file
             .read_channel(
-                &ObjectPath::channel("datatypes", channel_name),
+                &ChannelPath::new("datatypes", channel_name),
                 &mut buffer[..],
             )
             .unwrap();
