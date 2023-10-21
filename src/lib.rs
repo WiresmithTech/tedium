@@ -4,6 +4,7 @@ mod index;
 mod io;
 mod meta_data;
 mod paths;
+mod properties;
 mod raw_data;
 
 use std::{
@@ -20,8 +21,8 @@ use raw_data::{MultiChannelSlice, WriteBlock};
 
 // Re-exports.
 pub use io::data_types::TdmsStorageType;
-pub use meta_data::PropertyValue;
 pub use paths::ObjectPath;
+pub use properties::PropertyValue;
 pub use raw_data::DataLayout;
 
 #[derive(Debug)]

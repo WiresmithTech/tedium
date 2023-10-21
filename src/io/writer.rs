@@ -119,7 +119,8 @@ impl<W: Write> TdmsWriter<W> for BigEndianWriter<W> {
 #[cfg(test)]
 mod tests {
 
-    use crate::meta_data::{MetaData, ObjectMetaData, PropertyValue, RawDataIndex};
+    use crate::meta_data::{MetaData, ObjectMetaData, RawDataIndex};
+    use crate::properties::PropertyValue;
 
     use super::*;
     use std::{io::Cursor, mem::size_of};

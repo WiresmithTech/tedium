@@ -12,6 +12,7 @@ use crate::error::TdmsError;
 use crate::io::data_types::{DataType, TdmsStorageType};
 use crate::io::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
 use crate::io::writer::TdmsWriter;
+use crate::properties::PropertyValue;
 
 ///The fixed byte size of the lead in section.
 pub const LEAD_IN_BYTES: u64 = 28;
@@ -40,91 +41,6 @@ impl TdmsMetaData for DataType {
 
     fn size(&self) -> usize {
         std::mem::size_of::<u32>()
-    }
-}
-
-/// A wrapper type for data types found in tdms files
-#[derive(Debug, Clone, PartialEq)]
-pub enum PropertyValue {
-    //Void(()),
-    //Boolean(bool),
-    //I8(i8),
-    //I16(i16),
-    I32(i32),
-    //I64(i64),
-    //U8(u8),
-    //U16(u16),
-    U32(u32),
-    U64(u64),
-    Float(f32),
-    Double(f64),
-    // Extended(f128), // Can't represent this currently
-    // FloatUnit(f32), // These don't exist, they're a normal f32 paired with a property
-    // DoubleUnit(f64), // as above
-    //ExtendedUnit(FloatWithUnit<f128>), // Can't represent this currently
-    String(String),
-    // DaqMx(??), // I think these don't exist, it's a normal double with properties
-    // ComplexSingle(??)
-    // CompledDouble(??)
-    //TimeStamp(TimeStamp),
-}
-
-fn write_property_components<W: Write, T: TdmsStorageType>(
-    writer: &mut impl TdmsWriter<W>,
-    data_type: DataType,
-    value: &T,
-) -> Result<(), TdmsError> {
-    writer.write_meta(&data_type)?;
-    writer.write_value(value)?;
-    Ok(())
-}
-
-impl TdmsMetaData for PropertyValue {
-    fn read<R: Read + Seek>(reader: &mut impl TdmsReader<R>) -> Result<Self, TdmsError> {
-        let raw_type: DataType = reader.read_meta()?;
-
-        match raw_type {
-            DataType::I32 => Ok(PropertyValue::I32(reader.read_value()?)),
-            DataType::U32 => Ok(PropertyValue::U32(reader.read_value()?)),
-            DataType::U64 => Ok(PropertyValue::U64(reader.read_value()?)),
-            DataType::DoubleFloat | DataType::DoubleFloatWithUnit => {
-                Ok(PropertyValue::Double(reader.read_value()?))
-            }
-            DataType::TdmsString => Ok(PropertyValue::String(reader.read_value()?)),
-            _ => Err(TdmsError::UnsupportedType(raw_type)),
-        }
-    }
-
-    fn write<W: std::io::Write>(
-        &self,
-        writer: &mut impl crate::io::writer::TdmsWriter<W>,
-    ) -> Result<(), TdmsError> {
-        match self {
-            PropertyValue::I32(value) => write_property_components(writer, DataType::I32, value),
-            PropertyValue::U32(value) => write_property_components(writer, DataType::U32, value),
-            PropertyValue::U64(value) => write_property_components(writer, DataType::U64, value),
-            PropertyValue::Float(value) => {
-                write_property_components(writer, DataType::SingleFloat, value)
-            }
-            PropertyValue::Double(value) => {
-                write_property_components(writer, DataType::DoubleFloat, value)
-            }
-            PropertyValue::String(value) => {
-                write_property_components(writer, DataType::TdmsString, value)
-            }
-        }
-    }
-
-    fn size(&self) -> usize {
-        let internal_size = match self {
-            PropertyValue::I32(value) => value.size(),
-            PropertyValue::U32(value) => value.size(),
-            PropertyValue::U64(value) => value.size(),
-            PropertyValue::Float(value) => value.size(),
-            PropertyValue::Double(value) => value.size(),
-            PropertyValue::String(value) => value.size(),
-        };
-        internal_size + std::mem::size_of::<u32>()
     }
 }
 
@@ -408,21 +324,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_unknown_property_type() {
-        //example from NI site
-        let test_buffer = [
-            0x23, 00, 00, 00, 0x2Fu8, 0x27, 0x4D, 0x65, 0x61, 0x73, 0x75, 0x72, 0x65, 0x64, 0x20,
-            0x54, 0x68, 0x72, 0x6F, 0x75, 0x67, 0x68, 0x70, 0x75, 0x74, 0x20, 0x44, 0x61, 0x74,
-            0x61, 0x20, 0x28, 0x56, 0x6F, 0x6C, 0x74, 0x73, 0x29, 0x27,
-        ];
-        let mut cursor = Cursor::new(test_buffer);
-        let mut reader = LittleEndianReader::from_reader(&mut cursor);
-        let result: Result<PropertyValue, TdmsError> = reader.read_meta();
-        println!("{result:?}");
-        assert!(matches!(result, Err(TdmsError::UnknownPropertyType(0x23))));
-    }
-
-    #[test]
     fn test_toc_example_from_ni() {
         let toc_int = 0x0Eu32;
         let toc = ToC::from_u32(toc_int);
@@ -455,6 +356,21 @@ mod tests {
         };
 
         assert_eq!(segment.total_size_bytes(), 528);
+    }
+
+    #[test]
+    fn test_unknown_property_type() {
+        //example from NI site
+        let test_buffer = [
+            0x23, 00, 00, 00, 0x2Fu8, 0x27, 0x4D, 0x65, 0x61, 0x73, 0x75, 0x72, 0x65, 0x64, 0x20,
+            0x54, 0x68, 0x72, 0x6F, 0x75, 0x67, 0x68, 0x70, 0x75, 0x74, 0x20, 0x44, 0x61, 0x74,
+            0x61, 0x20, 0x28, 0x56, 0x6F, 0x6C, 0x74, 0x73, 0x29, 0x27,
+        ];
+        let mut cursor = Cursor::new(test_buffer);
+        let mut reader = LittleEndianReader::from_reader(&mut cursor);
+        let result: Result<PropertyValue, TdmsError> = reader.read_meta();
+        println!("{result:?}");
+        assert!(matches!(result, Err(TdmsError::UnknownPropertyType(0x23))));
     }
 
     #[test]

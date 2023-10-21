@@ -8,9 +8,10 @@
 use std::collections::HashMap;
 
 use crate::error::TdmsError;
-use crate::meta_data::{ObjectMetaData, PropertyValue, RawDataIndex, RawDataMeta, Segment};
+use crate::meta_data::{ObjectMetaData, RawDataIndex, RawDataMeta, Segment};
 use crate::paths::ObjectPath;
 use crate::raw_data::DataBlock;
+use crate::PropertyValue;
 
 /// A store for a given channel point to the data block with its data and the index within that.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,11 +324,11 @@ mod tests {
     use crate::io::data_types::DataType;
     use crate::meta_data::MetaData;
     use crate::meta_data::ObjectMetaData;
-    use crate::meta_data::PropertyValue;
     use crate::meta_data::RawDataIndex;
     use crate::meta_data::RawDataMeta;
     use crate::meta_data::ToC;
     use crate::raw_data::{DataLayout, Endianess};
+    use crate::PropertyValue;
 
     use super::*;
 

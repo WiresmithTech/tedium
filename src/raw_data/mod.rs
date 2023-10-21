@@ -147,10 +147,10 @@ impl DataBlock {
 #[cfg(test)]
 mod read_tests {
 
-    use crate::io::data_types::DataType;
-    use crate::meta_data::{MetaData, ObjectMetaData, PropertyValue, RawDataIndex, ToC};
-
     use super::*;
+    use crate::io::data_types::DataType;
+    use crate::meta_data::{MetaData, ObjectMetaData, RawDataIndex, ToC};
+    use crate::PropertyValue;
 
     fn dummy_segment() -> Segment {
         Segment {
