@@ -104,14 +104,14 @@ impl ActiveObject {
     fn update(&mut self, _meta: &ObjectMetaData) {}
 
     /// Fetch the corresponding [`ObjectData`] for the active object.
-    fn get_object_data<'b, 'c>(&'b self, index: &'c Objectindex) -> &'c ObjectData {
+    fn get_object_data<'c>(&self, index: &'c Objectindex) -> &'c ObjectData {
         index
             .get(&self.path)
             .expect("Should always have a registered version of active object")
     }
 
     /// Fetch the corresponding [`ObjectData`] for the active object in a mutable form.
-    fn get_object_data_mut<'b, 'c>(&'b self, index: &'c mut Objectindex) -> &'c mut ObjectData {
+    fn get_object_data_mut<'c>(&self, index: &'c mut Objectindex) -> &'c mut ObjectData {
         index
             .get_mut(&self.path)
             .expect("Should always have a registered version of active object")
@@ -243,7 +243,7 @@ impl Index {
                 let object_data = ObjectData::from_metadata(object);
                 let old = self.objects.insert(object_data.path.clone(), object_data);
                 assert!(
-                    matches!(old, None),
+                    old.is_none(),
                     "Should not be possible to be replacing an existing object."
                 );
             }
@@ -283,11 +283,11 @@ impl Index {
         self.data_blocks.get(index)
     }
 
-    pub fn check_write_values<'a, 'b>(
-        &'a self,
+    pub fn check_write_values<'b>(
+        &self,
         objects: Vec<(&'b str, DataFormat)>,
     ) -> (bool, Vec<(&'b str, RawDataIndex)>) {
-        let live_matches = if self.active_objects.len() != 0 {
+        let live_matches = if !self.active_objects.is_empty() {
             self.active_objects
                 .iter()
                 .zip(objects.iter())
@@ -305,8 +305,7 @@ impl Index {
                 let found_format = self
                     .objects
                     .get(path)
-                    .map(|object_data| object_data.latest_data_format.as_ref())
-                    .flatten();
+                    .and_then(|object_data| object_data.latest_data_format.as_ref());
                 match found_format {
                     Some(last_format) if last_format == &format => {
                         (path, RawDataIndex::MatchPrevious)

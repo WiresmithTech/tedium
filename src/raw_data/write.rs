@@ -15,7 +15,7 @@ pub trait WriteBlock {
 }
 
 /// Implementation for a data slice of [`TDMSStorageType`] assuming it is a preformatted data block.
-impl<'a, D: TdmsStorageType> WriteBlock for &[D] {
+impl<D: TdmsStorageType> WriteBlock for &[D] {
     fn data_structure(&self) -> Vec<RawDataMeta> {
         vec![RawDataMeta {
             data_type: D::NATURAL_TYPE,
@@ -32,7 +32,7 @@ impl<'a, D: TdmsStorageType> WriteBlock for &[D] {
     }
 
     fn size(&self) -> usize {
-        std::mem::size_of::<D>() * self.len()
+        std::mem::size_of_val(*self)
     }
 }
 

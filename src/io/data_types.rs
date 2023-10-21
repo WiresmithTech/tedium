@@ -114,7 +114,7 @@ pub trait TdmsStorageType: Sized {
     fn size(&self) -> usize;
 
     fn supports_data_type(data_type: &DataType) -> bool {
-        Self::SUPPORTED_TYPES.contains(&data_type)
+        Self::SUPPORTED_TYPES.contains(data_type)
     }
 }
 

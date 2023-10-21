@@ -42,7 +42,7 @@ impl TdmsFile<File> {
         loop {
             let segment = meta_data::Segment::read(&mut file).unwrap();
             let next_segment = index.add_segment(segment);
-            if let Err(_) = file.seek(SeekFrom::Start(next_segment)) {
+            if file.seek(SeekFrom::Start(next_segment)).is_err() {
                 break;
             }
             if file_size == file.stream_position().unwrap() {
@@ -114,10 +114,10 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
         let data_structures = raw_data
             .data_structure()
             .into_iter()
-            .map(|raw_meta| DataFormat::RawData(raw_meta));
+            .map(DataFormat::RawData);
 
         let channels = object_paths
-            .into_iter()
+            .iter()
             .map(|path| path.as_ref().path()) //surely a way to avoid this.
             .zip(data_structures)
             .collect();
@@ -139,9 +139,11 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
             Some(MetaData { objects })
         };
 
-        let mut toc = ToC::default();
-        toc.contains_new_object_list = !matches_live;
-        toc.data_is_interleaved = layout == DataLayout::Interleaved;
+        let toc = ToC {
+            contains_new_object_list: !matches_live,
+            data_is_interleaved: layout == DataLayout::Interleaved,
+            ..Default::default()
+        };
         let segment = self.writer.write_segment(toc, meta, Some(raw_data))?;
         self.index.add_segment(segment);
         Ok(())

@@ -47,7 +47,7 @@ pub trait TdmsReader<R: Read + Seek>: Sized {
         let meta_data = self.read_meta()?;
 
         Ok(Segment {
-            toc: toc,
+            toc,
             next_segment_offset,
             raw_data_offset,
             meta_data: Some(meta_data),

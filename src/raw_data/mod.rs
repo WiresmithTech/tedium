@@ -88,9 +88,9 @@ impl DataBlock {
     ///
     /// If an output slice for a channel has a length less than the number of samples it will stop
     /// reading once the end of the slice is reached.
-    pub fn read<'a, 'b, D: TdmsStorageType>(
+    pub fn read<'b, D: TdmsStorageType>(
         &self,
-        reader: &'a mut (impl Read + Seek),
+        reader: &mut (impl Read + Seek),
         channels_to_read: &'b mut [(usize, &'b mut [D])],
     ) -> Result<usize, TdmsError> {
         let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;

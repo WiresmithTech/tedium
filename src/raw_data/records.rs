@@ -102,7 +102,7 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     }
 
     /// Build a base record structure which just skips all channels.
-    fn build_base_record<'a>(channels: &'a [RawDataMeta]) -> Self {
+    fn build_base_record(channels: &[RawDataMeta]) -> Self {
         let mut plan = Vec::with_capacity(channels.len());
         for channel in channels {
             plan.push(RecordEntry {

@@ -120,7 +120,7 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
 fn get_block_read_data<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
     location: &'a MultiChannelLocation,
     output: &'b mut [&'c mut [D]],
-    channel_progress: &Vec<ChannelProgress>,
+    channel_progress: &[ChannelProgress],
 ) -> Vec<(usize, &'o mut [D])> {
     location
         .channel_indexes
@@ -178,9 +178,9 @@ fn read_plan(channel_positions: &[&[DataLocation]]) -> Vec<MultiChannelLocation>
             .zip(next_location.iter())
             .map(|(locations, &index)| {
                 if let Some(location) = locations.get(index) {
-                    return location.data_block;
+                    location.data_block
                 } else {
-                    return usize::MAX;
+                    usize::MAX
                 }
             })
             .min();
@@ -205,17 +205,17 @@ fn read_plan(channel_positions: &[&[DataLocation]]) -> Vec<MultiChannelLocation>
                 };
 
                 if next_location.data_block == next_block {
-                    *index = *index + 1;
-                    return Some(next_location.channel_index);
+                    *index += 1;
+                    Some(next_location.channel_index)
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
 
         blocks.push(MultiChannelLocation {
             data_block: next_block,
-            channel_indexes: channel_indexes,
+            channel_indexes,
         })
     }
 }
