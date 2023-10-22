@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::{fs::File, io::Cursor, path::PathBuf};
-use tdms_lib::TdmsFile;
+use tedium::TdmsFile;
 
 /// Open the test file assuming this is called from the root of the project.
 pub fn open_test_file() -> TdmsFile<File> {

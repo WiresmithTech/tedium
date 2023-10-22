@@ -1,7 +1,7 @@
 mod common;
 use labview_interop::types::LVTime;
 use std::{fmt::Debug, io::Read, io::Seek, io::Write};
-use tdms_lib::{PropertyPath, PropertyValue, TdmsFile};
+use tedium::{PropertyPath, PropertyValue, TdmsFile};
 
 const TEST_PROPERTIES: &[(&str, PropertyValue)] = &[
     ("i8", PropertyValue::I8(-5)),

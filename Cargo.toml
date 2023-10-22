@@ -1,7 +1,12 @@
 [package]
-name = "tdms-lib"
+name = "tedium"
 version = "0.1.0"
 edition = "2021"
+homepage = "https://github.com/WiresmithTech/tedium"
+repository = "https://github.com/WiresmithTech/tedium"
+description = "A fast and easy TDMS Library for Rust"
+keywords = ["labview", "ni", "tdms"]
+readme = ".\\README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

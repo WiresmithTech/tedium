@@ -1,7 +1,7 @@
 //! This example is designed to mimic the LabVIEW speed test examples
 //! for comparison and also as a consistent example of the best speed practices.
 
-use tdms_lib::{ChannelPath, DataLayout, TdmsFile};
+use tedium::{ChannelPath, DataLayout, TdmsFile};
 
 const WRITE_BLOCK_SIZE: usize = 1024 * 1024; // 1MB
 const WRITE_PASSES: usize = 1000;

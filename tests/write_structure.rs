@@ -3,7 +3,7 @@
 mod common;
 
 use common::get_empty_file;
-use tdms_lib::{ChannelPath, DataLayout};
+use tedium::{ChannelPath, DataLayout};
 
 #[test]
 fn test_multi_channel_write_interleaved() {

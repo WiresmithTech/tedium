@@ -1,7 +1,7 @@
 mod common;
 
 use labview_interop::types::LVTime;
-use tdms_lib::ChannelPath;
+use tedium::ChannelPath;
 
 fn test_data(channel_index: usize) -> Vec<f64> {
     let samples = match channel_index {
