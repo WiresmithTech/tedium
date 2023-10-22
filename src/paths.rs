@@ -20,7 +20,7 @@ fn escape_name(name: &str) -> String {
 /// (i.e. it does allocation)
 ///
 /// ```rust
-/// use tdms_lib::PropertyPath;
+/// use tedium::PropertyPath;
 ///
 /// let path = PropertyPath::channel("group", "channel");
 /// assert_eq!(path.path(), "/'group'/'channel'");
@@ -29,7 +29,7 @@ fn escape_name(name: &str) -> String {
 /// The `[PropertyPath::file]` path is a special case and is used to specify the root of the file.
 ///
 /// ```rust
-/// use tdms_lib::PropertyPath;
+/// use tedium::PropertyPath;
 ///
 /// let path = PropertyPath::file();
 /// assert_eq!(path.path(), "/");
@@ -82,7 +82,7 @@ impl Display for PropertyPath {
 /// This is a wrapper around the [`PropertyPath`] to indicate that it is a channel.
 ///
 /// ```rust
-/// use tdms_lib::ChannelPath;
+/// use tedium::ChannelPath;
 ///
 /// let path = ChannelPath::new("group", "channel");
 /// assert_eq!(path.path(), "/'group'/'channel'");

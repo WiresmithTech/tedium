@@ -7,7 +7,7 @@ use crate::io::writer::TdmsWriter;
 use crate::meta_data::{MetaData, ObjectMetaData, ToC};
 use crate::paths::ChannelPath;
 use crate::raw_data::{MultiChannelSlice, WriteBlock};
-use crate::DataLayout;
+use crate::{DataLayout, PropertyPath, PropertyValue};
 
 pub struct TdmsFileWriter<'a, F: Write + 'a, W: TdmsWriter<&'a mut F>> {
     index: &'a mut Index,
@@ -77,6 +77,52 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
             ..Default::default()
         };
         let segment = self.writer.write_segment(toc, meta, Some(raw_data))?;
+        self.index.add_segment(segment);
+        Ok(())
+    }
+
+    /// Write the properties to the given path.
+    /// This will overwrite any existing properties.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use tedium::{TdmsFile, PropertyPath, PropertyValue};
+    ///
+    /// let mut fake_file = std::io::Cursor::new(vec![]);
+    /// let mut file = TdmsFile::new(fake_file);
+    /// let mut writer = file.writer().unwrap();
+    ///
+    /// writer.write_properties(
+    ///    &PropertyPath::channel("group", "my_channel"),
+    ///   &[("name", PropertyValue::String("my_channel".to_string()))],
+    /// ).unwrap();
+    /// ```
+    ///
+    pub fn write_properties(
+        &mut self,
+        path: &PropertyPath,
+        properties: &[(&str, PropertyValue)],
+    ) -> Result<(), TdmsError> {
+        let path = path.path();
+        let properties = properties
+            .iter()
+            .map(|(name, value)| (name.to_string(), (*value).clone()))
+            .collect();
+
+        let object = ObjectMetaData {
+            path: path.to_string(),
+            properties,
+            raw_data_index: crate::meta_data::RawDataIndex::None,
+        };
+
+        let meta = MetaData {
+            objects: vec![object],
+        };
+
+        let segment =
+            self.writer
+                .write_segment(ToC::default(), Some(meta), Option::<&[u8]>::None)?;
         self.index.add_segment(segment);
         Ok(())
     }
