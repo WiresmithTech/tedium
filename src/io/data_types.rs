@@ -6,6 +6,7 @@ use std::{
     io::{Read, Write},
 };
 
+use labview_interop::types::timestamp::LVTime;
 use num_derive::FromPrimitive;
 
 use crate::error::TdmsError;
@@ -33,7 +34,7 @@ pub enum DataType {
     ExtendedFloatWithUnit = 13,
     TdmsString = 0x20,
     Boolean = 0x21,
-    TimeStamp = 0x44,
+    Timestamp = 0x44,
     FixedPoint = 0x4F,
     ComplexSingleFloat = 0x0008_000c,
     ComplexDoubleFloat = 0x0010_000d,
@@ -57,7 +58,7 @@ impl DataType {
             DataType::ExtendedFloatWithUnit => 16,
             DataType::TdmsString => 0,
             DataType::Boolean => 1,
-            DataType::TimeStamp => 8,
+            DataType::Timestamp => 8,
             DataType::FixedPoint => 8,
             DataType::ComplexSingleFloat => 8,
             DataType::ComplexDoubleFloat => 16,
@@ -86,7 +87,7 @@ impl Display for DataType {
             DataType::ExtendedFloatWithUnit => write!(f, "ExtendedFloatWithUnit"),
             DataType::TdmsString => write!(f, "TdmsString"),
             DataType::Boolean => write!(f, "Boolean"),
-            DataType::TimeStamp => write!(f, "TimeStamp"),
+            DataType::Timestamp => write!(f, "TimeStamp"),
             DataType::FixedPoint => write!(f, "FixedPoint"),
             DataType::ComplexSingleFloat => write!(f, "ComplexSingleFloat"),
             DataType::ComplexDoubleFloat => write!(f, "ComplexDoubleFloat"),
@@ -212,7 +213,7 @@ impl TdmsStorageType for String {
 }
 
 impl TdmsStorageType for bool {
-    const SUPPORTED_TYPES: &'static [DataType] = &[DataType::Boolean];
+    const SUPPORTED_TYPES: &'static [DataType] = &[DataType::Boolean, DataType::U8];
 
     const NATURAL_TYPE: DataType = DataType::Boolean;
 
@@ -242,10 +243,44 @@ impl TdmsStorageType for bool {
     }
 }
 
+const LVTIME_SIZE: usize = 16;
+
+impl TdmsStorageType for LVTime {
+    const SUPPORTED_TYPES: &'static [DataType] = &[DataType::Timestamp];
+    const NATURAL_TYPE: DataType = DataType::Timestamp;
+
+    fn read_le(reader: &mut impl Read) -> StorageResult<Self> {
+        let mut bytes = [0u8; LVTIME_SIZE];
+        reader.read_exact(&mut bytes)?;
+        Ok(LVTime::from_le_bytes(bytes))
+    }
+
+    fn read_be(reader: &mut impl Read) -> StorageResult<Self> {
+        let mut bytes = [0u8; LVTIME_SIZE];
+        reader.read_exact(&mut bytes)?;
+        Ok(LVTime::from_be_bytes(bytes))
+    }
+
+    fn write_le(&self, writer: &mut impl Write) -> StorageResult<()> {
+        writer.write_all(&self.to_le_bytes())?;
+        Ok(())
+    }
+
+    fn write_be(&self, writer: &mut impl Write) -> StorageResult<()> {
+        writer.write_all(&self.to_be_bytes())?;
+        Ok(())
+    }
+
+    fn size(&self) -> usize {
+        LVTIME_SIZE
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::io::reader::{BigEndianReader, LittleEndianReader, TdmsReader};
     use crate::io::writer::{BigEndianWriter, LittleEndianWriter, TdmsWriter};
+    use labview_interop::types::timestamp::LVTime;
     use std::io::Cursor;
     /// Tests the conversion against the le and be version for the value specified.
     macro_rules! test_formatting {
@@ -371,6 +406,44 @@ mod tests {
             let mut writer = BigEndianWriter::from_writer(&mut output_bytes[..]);
             writer.write_value(&original_value).unwrap();
         }
+        assert_eq!(bytes, output_bytes);
+    }
+
+    #[test]
+    fn test_timestamp_be() {
+        //Will just test using a seconds timestamp.
+        let timestamp: f64 = 1234567890.123456789;
+        let time = LVTime::from_unix_epoch(timestamp);
+
+        let bytes = time.to_be_bytes();
+        let mut reader = Cursor::new(bytes);
+        let mut tdms_reader = BigEndianReader::from_reader(&mut reader);
+        let read_value: LVTime = tdms_reader.read_value().unwrap();
+        assert_eq!(read_value, time);
+
+        let mut output_bytes = [0u8; 16];
+        let mut writer = BigEndianWriter::from_writer(&mut output_bytes[..]);
+        writer.write_value(&time).unwrap();
+        drop(writer);
+        assert_eq!(bytes, output_bytes);
+    }
+
+    #[test]
+    fn test_timestamp_le() {
+        //Will just test using a seconds timestamp.
+        let timestamp: f64 = 1234567890.123456789;
+        let time = LVTime::from_unix_epoch(timestamp);
+
+        let bytes = time.to_le_bytes();
+        let mut reader = Cursor::new(bytes);
+        let mut tdms_reader = LittleEndianReader::from_reader(&mut reader);
+        let read_value: LVTime = tdms_reader.read_value().unwrap();
+        assert_eq!(read_value, time);
+
+        let mut output_bytes = [0u8; 16];
+        let mut writer = LittleEndianWriter::from_writer(&mut output_bytes[..]);
+        writer.write_value(&time).unwrap();
+        drop(writer);
         assert_eq!(bytes, output_bytes);
     }
 }

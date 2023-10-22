@@ -1,5 +1,6 @@
 mod common;
 
+use labview_interop::types::LVTime;
 use tdms_lib::ChannelPath;
 
 fn test_data(channel_index: usize) -> Vec<f64> {
@@ -102,4 +103,29 @@ fn test_read_basic_numeric_types() {
     read_datatype_test!(file, u64);
     read_datatype_test!(file, f32);
     read_datatype_test!(file, f64);
+}
+
+/// Test the boolean type - note that LabVIEW actually stores a U8.
+#[test]
+fn test_boolean_data_types() {
+    let mut file = common::open_test_file();
+    let mut buffer = vec![false; 100];
+    file.read_channel(&ChannelPath::new("datatypes", "bool"), &mut buffer[..])
+        .unwrap();
+    assert_eq!(&buffer[..4], &[true, false, true, false]);
+}
+
+#[test]
+fn test_timestamp_data_types() {
+    let expected_ts_lv_epoch = [3780807865.0, 3780807866.0, 3780807867.0];
+    let expected = expected_ts_lv_epoch
+        .iter()
+        .map(|&ts| LVTime::from_lv_epoch(ts))
+        .collect::<Vec<LVTime>>();
+
+    let mut file = common::open_test_file();
+    let mut buffer = vec![LVTime::from_parts(0, 0); 100];
+    file.read_channel(&ChannelPath::new("datatypes", "timestamp"), &mut buffer[..])
+        .unwrap();
+    assert_eq!(&buffer[..3], &expected);
 }

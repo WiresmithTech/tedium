@@ -3,6 +3,8 @@
 //! This is based around an enum that can represent all the possible types of property values.
 //!
 
+use labview_interop::types::LVTime;
+
 use crate::error::TdmsError;
 use crate::io::data_types::{DataType, TdmsStorageType};
 use crate::io::reader::TdmsReader;
@@ -30,7 +32,7 @@ pub enum PropertyValue {
     String(String),
     // ComplexSingle(??)
     // CompledDouble(??)
-    //TimeStamp(TimeStamp),
+    Timestamp(LVTime),
 }
 
 impl PropertyValue {
@@ -48,6 +50,7 @@ impl PropertyValue {
             PropertyValue::I64(_) => DataType::I64,
             PropertyValue::U8(_) => DataType::U8,
             PropertyValue::U16(_) => DataType::U16,
+            PropertyValue::Timestamp(_) => DataType::Timestamp,
         }
     }
 }
@@ -83,6 +86,7 @@ impl TdmsMetaData for PropertyValue {
                 Ok(PropertyValue::DoubleFloat(reader.read_value()?))
             }
             DataType::TdmsString => Ok(PropertyValue::String(reader.read_value()?)),
+            DataType::Timestamp => Ok(PropertyValue::Timestamp(reader.read_value()?)),
             _ => Err(TdmsError::UnsupportedType(raw_type)),
         }
     }
@@ -112,6 +116,9 @@ impl TdmsMetaData for PropertyValue {
             PropertyValue::String(value) => {
                 write_property_components(writer, self.datatype(), value)
             }
+            PropertyValue::Timestamp(value) => {
+                write_property_components(writer, self.datatype(), value)
+            }
         }
     }
 
@@ -129,6 +136,7 @@ impl TdmsMetaData for PropertyValue {
             PropertyValue::I64(value) => value.size(),
             PropertyValue::U8(value) => value.size(),
             PropertyValue::U16(value) => value.size(),
+            PropertyValue::Timestamp(value) => value.size(),
         };
         internal_size + std::mem::size_of::<u32>()
     }
@@ -169,6 +177,7 @@ impl_conversion_for_property_value!(u64, U64);
 impl_conversion_for_property_value!(f32, SingleFloat);
 impl_conversion_for_property_value!(f64, DoubleFloat);
 impl_conversion_for_property_value!(bool, Boolean);
+impl_conversion_for_property_value!(LVTime, Timestamp);
 
 #[cfg(test)]
 mod tests {
@@ -178,8 +187,9 @@ mod tests {
     use std::io::Cursor;
 
     macro_rules! test_property_type {
-        ($type:ty, $value:literal, $prop_value:expr) => {
+        ($type:ty, $value:expr, $prop_value:expr) => {
             paste::item! {
+                #[allow(non_snake_case)]
                 #[test]
                 fn [<$type _read_write>]() {
                     let mut buffer = vec![];
@@ -191,6 +201,7 @@ mod tests {
                     assert_eq!(value, $prop_value);
                 }
 
+                #[allow(non_snake_case)]
                 #[test]
                 fn [< $type _size >]() {
                     let mut buffer = vec![];
@@ -201,6 +212,7 @@ mod tests {
                     assert_eq!(size, $prop_value.size());
                 }
 
+                #[allow(non_snake_case)]
                 #[test]
                 fn [< $type _conversion >]() {
                     let value: $type = $value;
@@ -225,6 +237,11 @@ mod tests {
     test_property_type!(f32, 51.0, PropertyValue::SingleFloat(51.0));
     test_property_type!(f64, 51.0, PropertyValue::DoubleFloat(51.0));
     test_property_type!(bool, true, PropertyValue::Boolean(true));
+    test_property_type!(
+        LVTime,
+        LVTime::from_unix_epoch(100.0),
+        PropertyValue::Timestamp(LVTime::from_unix_epoch(100.0))
+    );
 
     /// As properties can't directly link to units, united types are loaded
     /// as plain numbers.
