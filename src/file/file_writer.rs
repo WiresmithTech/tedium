@@ -16,6 +16,11 @@ pub struct TdmsFileWriter<'a, F: Write + 'a, W: TdmsWriter<&'a mut F>> {
 }
 
 impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
+    /// Create a new TDMS file writer.
+    ///
+    /// Normally this is created by calling [`crate::TdmsFile::writer`]
+    ///
+    /// But you can create it directly if you want to use a custom writer.
     pub fn new(index: &'a mut Index, writer: W) -> Self {
         Self {
             index,
@@ -23,6 +28,14 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
             _file: std::marker::PhantomData,
         }
     }
+
+    /// Write the data to the given channels.
+    ///
+    /// If you provide multiple channels then it is assumed tha the values is a 2d array layout.
+    ///
+    /// If layout is [`DataLayout::Interleaved`] then the data is assumed to be interleaved. i.e. ch1, ch2, ch1, ch2
+    ///
+    /// If layout is [`DataLayout::Contigious`] then the data is assumed to be contigious. i.e. ch1, ch1, ch1, ch2, ch2, ch2
     pub fn write_channels<D: TdmsStorageType>(
         &mut self,
         channels: &[impl AsRef<ChannelPath>],
@@ -68,6 +81,7 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
         Ok(())
     }
 
+    /// Forces the file to sync to disk by calling the sync method on the writer.
     pub fn sync(&mut self) -> Result<(), TdmsError> {
         self.writer.sync()
     }

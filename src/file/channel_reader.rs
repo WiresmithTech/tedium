@@ -37,6 +37,11 @@ impl ChannelProgress {
 }
 
 impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFile<F> {
+    /// Read a single channel from the tdms file.
+    ///
+    /// channel should provide a path to the channel and output is a mutable slice for the data to be written into.
+    ///
+    /// If there is more data in the file than the size of the slice, we will stop reading at the end of the slice.
     pub fn read_channel<D: TdmsStorageType>(
         &mut self,
         channel: &ChannelPath,
@@ -71,6 +76,10 @@ impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFi
         Ok(())
     }
 
+    /// Read multiple channels from the tdms file.
+    ///
+    /// channels should provide a slice of paths to the channels and output is a set of  mutable slice for the data to be written into.
+    /// Each channel will be read for the length of its corresponding slice.
     pub fn read_channels<'a, D: TdmsStorageType>(
         &mut self,
         channels: &[impl AsRef<ChannelPath>],
