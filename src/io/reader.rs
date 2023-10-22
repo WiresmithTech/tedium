@@ -1,6 +1,4 @@
 //! Contains wrappers around readers to encode TDMS specific formatting e.g. endianess.
-//!
-//! Also contains a TdmsDataReader trait for extending the reader with new data types.
 
 use std::io::{BufReader, Read, Seek};
 
