@@ -13,8 +13,6 @@ use crate::{error::TdmsError, io::data_types::TdmsStorageType, meta_data::RawDat
 pub enum RecordEntryPlan<'a, T: 'a, I: Iterator<Item = &'a mut T>> {
     // An entry that isn't to be read
     Skip(i64),
-    // A entry that isn't being read but has an unknown size.
-    SkipVariable,
     // Read entry to output index.
     Read(I),
 }
@@ -23,7 +21,6 @@ impl<'a, T: TdmsStorageType, I: Iterator<Item = &'a mut T>> RecordEntryPlan<'a, 
     fn entry_size_bytes(&self) -> Option<usize> {
         match self {
             RecordEntryPlan::Skip(bytes) => Some(*bytes as usize),
-            RecordEntryPlan::SkipVariable => None,
             RecordEntryPlan::Read(_) => Some(T::SIZE_BYTES),
         }
     }

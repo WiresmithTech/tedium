@@ -56,9 +56,6 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
                     RecordEntryPlan::Skip(bytes) => {
                         self.reader.move_position(*bytes)?;
                     }
-                    RecordEntryPlan::SkipVariable => {
-                        todo!("Variable length records not yet supported")
-                    }
                 };
             }
         }

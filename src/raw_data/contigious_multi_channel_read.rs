@@ -74,9 +74,6 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
                     let skip_bytes = *bytes * read_instruction.length as i64;
                     self.reader.move_position(skip_bytes)?;
                 }
-                RecordEntryPlan::SkipVariable => {
-                    todo!("Variable length records not yet supported")
-                }
             };
         }
 
