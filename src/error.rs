@@ -27,4 +27,6 @@ pub enum TdmsError {
     BadDataBlockLength(usize, usize),
     #[error("Attempting to read a channel or property of type {0} as type {1}")]
     DataTypeMismatch(DataType, DataType),
+    #[error("Attempted to read past the end of the file")]
+    EndOfFile,
 }

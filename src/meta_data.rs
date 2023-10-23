@@ -172,7 +172,16 @@ impl Segment {
 
     pub fn read(reader: &mut (impl Read + Seek)) -> Result<Segment, TdmsError> {
         let mut tag = [0u8; 4];
-        reader.read_exact(&mut tag)?;
+        match reader.read_exact(&mut tag) {
+            Ok(_) => {}
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                    return Err(TdmsError::EndOfFile);
+                } else {
+                    return Err(TdmsError::IoError(e));
+                }
+            }
+        }
 
         if tag != [0x54, 0x44, 0x53, 0x6D] {
             return Err(TdmsError::HeaderPatternNotMatched(tag));

@@ -15,5 +15,5 @@ pub fn get_empty_file() -> TdmsFile<Cursor<Vec<u8>>> {
     let buffer: Vec<u8> = Vec::with_capacity(1024);
     let file = Cursor::new(buffer);
     println!("cursor: {file:?}");
-    TdmsFile::new(file)
+    TdmsFile::new(file).unwrap()
 }

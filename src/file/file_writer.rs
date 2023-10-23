@@ -90,7 +90,7 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
     /// use tedium::{TdmsFile, PropertyPath, PropertyValue};
     ///
     /// let mut fake_file = std::io::Cursor::new(vec![]);
-    /// let mut file = TdmsFile::new(fake_file);
+    /// let mut file = TdmsFile::new(fake_file).unwrap();
     /// let mut writer = file.writer().unwrap();
     ///
     /// writer.write_properties(
