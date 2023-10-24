@@ -6,7 +6,7 @@
 use labview_interop::types::LVTime;
 
 use crate::error::TdmsError;
-use crate::io::data_types::{DataType, TdmsStorageType};
+use crate::io::data_types::{Complex, DataType, ExtendedRaw, TdmsStorageType};
 use crate::io::reader::TdmsReader;
 use crate::io::writer::TdmsWriter;
 use crate::meta_data::TdmsMetaData;
@@ -27,11 +27,10 @@ pub enum PropertyValue {
     U64(u64),
     SingleFloat(f32),
     DoubleFloat(f64),
-    // Extended(f128), // Can't represent this currently
-    //ExtendedUnit(FloatWithUnit<f128>), // Can't represent this currently
+    Extended(ExtendedRaw),
     String(String),
-    // ComplexSingle(??)
-    // CompledDouble(??)
+    ComplexSingleFloat(Complex<f32>),
+    ComplexDoubleFloat(Complex<f64>),
     Timestamp(LVTime),
 }
 
@@ -44,6 +43,7 @@ impl PropertyValue {
             PropertyValue::U64(_) => DataType::U64,
             PropertyValue::SingleFloat(_) => DataType::SingleFloat,
             PropertyValue::DoubleFloat(_) => DataType::DoubleFloat,
+            PropertyValue::Extended(_) => DataType::ExtendedFloat,
             PropertyValue::String(_) => DataType::TdmsString,
             PropertyValue::I8(_) => DataType::I8,
             PropertyValue::I16(_) => DataType::I16,
@@ -52,6 +52,8 @@ impl PropertyValue {
             PropertyValue::U16(_) => DataType::U16,
             PropertyValue::Timestamp(_) => DataType::Timestamp,
             PropertyValue::Void => DataType::Void,
+            PropertyValue::ComplexSingleFloat(_) => DataType::ComplexSingleFloat,
+            PropertyValue::ComplexDoubleFloat(_) => DataType::ComplexDoubleFloat,
         }
     }
 }
@@ -87,6 +89,15 @@ impl TdmsMetaData for PropertyValue {
             DataType::DoubleFloat | DataType::DoubleFloatWithUnit => {
                 Ok(PropertyValue::DoubleFloat(reader.read_value()?))
             }
+            DataType::ExtendedFloat | DataType::ExtendedFloatWithUnit => {
+                Ok(PropertyValue::Extended(reader.read_value()?))
+            }
+            DataType::ComplexSingleFloat => {
+                Ok(PropertyValue::ComplexSingleFloat(reader.read_value()?))
+            }
+            DataType::ComplexDoubleFloat => {
+                Ok(PropertyValue::ComplexDoubleFloat(reader.read_value()?))
+            }
             DataType::TdmsString => Ok(PropertyValue::String(reader.read_value()?)),
             DataType::Timestamp => Ok(PropertyValue::Timestamp(reader.read_value()?)),
             _ => Err(TdmsError::UnsupportedType(raw_type)),
@@ -119,6 +130,15 @@ impl TdmsMetaData for PropertyValue {
             PropertyValue::DoubleFloat(value) => {
                 write_property_components(writer, self.datatype(), value)
             }
+            PropertyValue::Extended(value) => {
+                write_property_components(writer, self.datatype(), value)
+            }
+            PropertyValue::ComplexSingleFloat(value) => {
+                write_property_components(writer, self.datatype(), value)
+            }
+            PropertyValue::ComplexDoubleFloat(value) => {
+                write_property_components(writer, self.datatype(), value)
+            }
             PropertyValue::String(value) => {
                 write_property_components(writer, self.datatype(), value)
             }
@@ -137,6 +157,9 @@ impl TdmsMetaData for PropertyValue {
             PropertyValue::U64(value) => value.size(),
             PropertyValue::SingleFloat(value) => value.size(),
             PropertyValue::DoubleFloat(value) => value.size(),
+            PropertyValue::Extended(value) => value.size(),
+            PropertyValue::ComplexSingleFloat(value) => value.size(),
+            PropertyValue::ComplexDoubleFloat(value) => value.size(),
             PropertyValue::String(value) => value.size(),
             PropertyValue::I8(value) => value.size(),
             PropertyValue::I16(value) => value.size(),
@@ -185,6 +208,8 @@ impl_conversion_for_property_value!(f32, SingleFloat);
 impl_conversion_for_property_value!(f64, DoubleFloat);
 impl_conversion_for_property_value!(bool, Boolean);
 impl_conversion_for_property_value!(LVTime, Timestamp);
+impl_conversion_for_property_value!(Complex<f32>, ComplexSingleFloat);
+impl_conversion_for_property_value!(Complex<f64>, ComplexDoubleFloat);
 
 #[cfg(test)]
 mod tests {
@@ -194,11 +219,11 @@ mod tests {
     use std::io::Cursor;
 
     macro_rules! test_property_type {
-        ($type:ty, $value:expr, $prop_value:expr) => {
+        ($name:literal, $type:ty, $value:expr, $prop_value:expr) => {
             paste::item! {
                 #[allow(non_snake_case)]
                 #[test]
-                fn [<$type _read_write>]() {
+                fn [<$name _read_write>]() {
                     let mut buffer = vec![];
                     let mut writer = LittleEndianWriter::from_writer(&mut buffer);
                     $prop_value.write(&mut writer).unwrap();
@@ -210,7 +235,7 @@ mod tests {
 
                 #[allow(non_snake_case)]
                 #[test]
-                fn [< $type _size >]() {
+                fn [< $name _size >]() {
                     let mut buffer = vec![];
                     let mut writer = LittleEndianWriter::from_writer(&mut buffer);
                     $prop_value.write(&mut writer).unwrap();
@@ -221,7 +246,7 @@ mod tests {
 
                 #[allow(non_snake_case)]
                 #[test]
-                fn [< $type _conversion >]() {
+                fn [< $name _conversion >]() {
                     let value: $type = $value;
                     let prop_value: PropertyValue = value.into();
                     assert_eq!(prop_value, $prop_value);
@@ -233,21 +258,34 @@ mod tests {
         };
     }
 
-    test_property_type!(u8, 51, PropertyValue::U8(51));
-    test_property_type!(i8, -51, PropertyValue::I8(-51));
-    test_property_type!(u16, 51, PropertyValue::U16(51));
-    test_property_type!(i16, -51, PropertyValue::I16(-51));
-    test_property_type!(u32, 51, PropertyValue::U32(51));
-    test_property_type!(i32, -51, PropertyValue::I32(-51));
-    test_property_type!(u64, 51, PropertyValue::U64(51));
-    test_property_type!(i64, -51, PropertyValue::I64(-51));
-    test_property_type!(f32, 51.0, PropertyValue::SingleFloat(51.0));
-    test_property_type!(f64, 51.0, PropertyValue::DoubleFloat(51.0));
-    test_property_type!(bool, true, PropertyValue::Boolean(true));
+    test_property_type!("u8", u8, 51, PropertyValue::U8(51));
+    test_property_type!("i8", i8, -51, PropertyValue::I8(-51));
+    test_property_type!("u16", u16, 51, PropertyValue::U16(51));
+    test_property_type!("i16", i16, -51, PropertyValue::I16(-51));
+    test_property_type!("u32", u32, 51, PropertyValue::U32(51));
+    test_property_type!("i32", i32, -51, PropertyValue::I32(-51));
+    test_property_type!("u64", u64, 51, PropertyValue::U64(51));
+    test_property_type!("i64", i64, -51, PropertyValue::I64(-51));
+    test_property_type!("f32", f32, 51.0, PropertyValue::SingleFloat(51.0));
+    test_property_type!("f64", f64, 51.0, PropertyValue::DoubleFloat(51.0));
+    test_property_type!("bool", bool, true, PropertyValue::Boolean(true));
     test_property_type!(
+        "LVTime",
         LVTime,
         LVTime::from_unix_epoch(100.0),
         PropertyValue::Timestamp(LVTime::from_unix_epoch(100.0))
+    );
+    test_property_type!(
+        "Complexf32",
+        Complex<f32>,
+        Complex::new(1.0, 2.0),
+        PropertyValue::ComplexSingleFloat(Complex::new(1.0, 2.0))
+    );
+    test_property_type!(
+        "Complexf64",
+        Complex<f64>,
+        Complex::new(1.0, 2.0),
+        PropertyValue::ComplexDoubleFloat(Complex::new(1.0, 2.0))
     );
 
     /// As properties can't directly link to units, united types are loaded
@@ -278,6 +316,23 @@ mod tests {
         let mut reader = LittleEndianReader::from_reader(Cursor::new(&buffer[..]));
         let value = PropertyValue::read(&mut reader).unwrap();
         assert_eq!(value, PropertyValue::DoubleFloat(51.0));
+    }
+
+    /// As properties can't directly link to units, united types are loaded
+    /// as plain numbers.
+    #[test]
+    fn test_extended_float_with_units_treated_as_float() {
+        let mut buffer = vec![];
+        let mut writer = LittleEndianWriter::from_writer(&mut buffer);
+
+        let prop_value = ExtendedRaw::new(0x0008_000c);
+        writer.write_meta(&DataType::ExtendedFloatWithUnit).unwrap();
+        writer.write_value(&prop_value).unwrap();
+        drop(writer);
+
+        let mut reader = LittleEndianReader::from_reader(Cursor::new(&buffer[..]));
+        let value = PropertyValue::read(&mut reader).unwrap();
+        assert_eq!(value, PropertyValue::Extended(prop_value));
     }
 
     #[test]

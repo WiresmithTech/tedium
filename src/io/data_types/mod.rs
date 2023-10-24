@@ -12,6 +12,8 @@
 //!   to control additional dependencies required to support them.
 
 mod bool;
+mod complex;
+mod extended;
 mod native_numerics;
 mod timestamp;
 
@@ -24,6 +26,8 @@ use crate::error::TdmsError;
 
 // Re-exports.
 pub use bool::*;
+pub use complex::*;
+pub use extended::*;
 pub use native_numerics::*;
 pub use timestamp::*;
 

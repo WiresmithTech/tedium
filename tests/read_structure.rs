@@ -1,7 +1,7 @@
 mod common;
 
 use labview_interop::types::LVTime;
-use tedium::ChannelPath;
+use tedium::{types::Complex, ChannelPath};
 
 fn test_data(channel_index: usize) -> Vec<f64> {
     let samples = match channel_index {
@@ -90,6 +90,23 @@ macro_rules! read_datatype_test {
     };
 }
 
+macro_rules! read_complex_datatype_test {
+    ($file: ident, $type: ty) => {
+        let channel_name = "complex_".to_string() + stringify!($type);
+        let expected = (1u8..4)
+            .map(|value| Complex::<$type>::new(value as $type * 10.0, value.into()))
+            .collect::<Vec<Complex<$type>>>();
+        let mut buffer = vec![Complex::<$type>::new(0.0, 0.0); 3];
+        $file
+            .read_channel(
+                &ChannelPath::new("datatypes", &channel_name),
+                &mut buffer[..],
+            )
+            .unwrap();
+        assert_eq!(buffer, expected);
+    };
+}
+
 #[test]
 fn test_read_basic_numeric_types() {
     let mut file = common::open_test_file();
@@ -103,6 +120,13 @@ fn test_read_basic_numeric_types() {
     read_datatype_test!(file, u64);
     read_datatype_test!(file, f32);
     read_datatype_test!(file, f64);
+}
+
+#[test]
+fn test_complex_type_read() {
+    let mut file = common::open_test_file();
+    read_complex_datatype_test!(file, f32);
+    read_complex_datatype_test!(file, f64);
 }
 
 /// Test the boolean type - note that LabVIEW actually stores a U8.

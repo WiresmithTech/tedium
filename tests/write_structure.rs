@@ -3,6 +3,7 @@
 mod common;
 
 use common::get_empty_file;
+use tedium::types::Complex;
 use tedium::{ChannelPath, DataLayout};
 
 #[test]
@@ -117,7 +118,7 @@ fn test_repeated_writes() {
     assert_eq!(buffer, vec![4.0, 5.0, 6.0, 10.0, 11.0, 12.0]);
 }
 
-macro_rules! read_datatype_test {
+macro_rules! write_datatype_test {
     ($file: ident, $type: ty) => {
         let channel_name = stringify!($type);
         let channel_path = ChannelPath::new("datatypes", channel_name);
@@ -140,17 +141,49 @@ macro_rules! read_datatype_test {
     };
 }
 
+macro_rules! write_complex_datatype_test {
+    ($file: ident, $type: ty) => {
+        let channel_name = "complex_".to_string() + stringify!($type);
+        let channel_path = ChannelPath::new("datatypes", &channel_name);
+        let expected = (0..100u8)
+            .map(|value| Complex::<$type>::new(value as $type * 10.0, value.into()))
+            .collect::<Vec<Complex<$type>>>();
+
+        let mut writer = $file.writer().unwrap();
+        writer
+            .write_channels(&[&channel_path], &expected[..], DataLayout::Contigious)
+            .unwrap();
+        drop(writer);
+
+        let mut buffer = vec![Complex::<$type>::new(0.0, 0.0); 100];
+        $file
+            .read_channel(
+                &ChannelPath::new("datatypes", &channel_name),
+                &mut buffer[..],
+            )
+            .unwrap();
+        assert_eq!(buffer, expected);
+    };
+}
+
 #[test]
 fn test_write_basic_numeric_types() {
     let mut file = common::get_empty_file();
-    read_datatype_test!(file, i8);
-    read_datatype_test!(file, u8);
-    read_datatype_test!(file, i16);
-    read_datatype_test!(file, u16);
-    read_datatype_test!(file, i32);
-    read_datatype_test!(file, u32);
-    read_datatype_test!(file, i64);
-    read_datatype_test!(file, u64);
-    read_datatype_test!(file, f32);
-    read_datatype_test!(file, f64);
+    write_datatype_test!(file, i8);
+    write_datatype_test!(file, u8);
+    write_datatype_test!(file, i16);
+    write_datatype_test!(file, u16);
+    write_datatype_test!(file, i32);
+    write_datatype_test!(file, u32);
+    write_datatype_test!(file, i64);
+    write_datatype_test!(file, u64);
+    write_datatype_test!(file, f32);
+    write_datatype_test!(file, f64);
+}
+
+#[test]
+fn test_write_complex_types() {
+    let mut file = common::get_empty_file();
+    write_complex_datatype_test!(file, f32);
+    write_complex_datatype_test!(file, f64);
 }

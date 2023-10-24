@@ -1,6 +1,7 @@
 mod common;
 use labview_interop::types::LVTime;
 use std::{fmt::Debug, io::Read, io::Seek, io::Write};
+use tedium::types::Complex;
 use tedium::{PropertyPath, PropertyValue, TdmsFile};
 
 const TEST_PROPERTIES: &[(&str, PropertyValue)] = &[
@@ -16,6 +17,14 @@ const TEST_PROPERTIES: &[(&str, PropertyValue)] = &[
     ("f64", PropertyValue::DoubleFloat(40.0)),
     ("bool_true", PropertyValue::Boolean(true)),
     ("bool_false", PropertyValue::Boolean(false)),
+    (
+        "complex_f32",
+        PropertyValue::ComplexSingleFloat(Complex::new(60.0, 6.0)),
+    ),
+    (
+        "complex_f64",
+        PropertyValue::ComplexDoubleFloat(Complex::new(-60.0, -6.0)),
+    ),
     /* (
         "timestamp",
         PropertyValue::Timestamp(LVTime::from_lv_epoch(3780807561.0)),

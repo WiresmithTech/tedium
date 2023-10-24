@@ -15,5 +15,10 @@ pub use paths::{ChannelPath, PropertyPath};
 pub use properties::PropertyValue;
 pub use raw_data::DataLayout;
 
+// Put the types in their own namespace.
+pub mod types {
+    pub use crate::io::data_types::*;
+}
+
 #[cfg(test)]
 mod tests {}
