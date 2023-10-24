@@ -15,7 +15,7 @@ use std::io::{Read, Seek, Write};
 /// A wrapper type for data types found in tdms files
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyValue {
-    //Void(()),
+    Void,
     Boolean(bool),
     I8(i8),
     I16(i16),
@@ -51,6 +51,7 @@ impl PropertyValue {
             PropertyValue::U8(_) => DataType::U8,
             PropertyValue::U16(_) => DataType::U16,
             PropertyValue::Timestamp(_) => DataType::Timestamp,
+            PropertyValue::Void => DataType::Void,
         }
     }
 }
@@ -70,6 +71,7 @@ impl TdmsMetaData for PropertyValue {
         let raw_type: DataType = reader.read_meta()?;
 
         match raw_type {
+            DataType::Void => Ok(PropertyValue::Void),
             DataType::Boolean => Ok(PropertyValue::Boolean(reader.read_value()?)),
             DataType::I8 => Ok(PropertyValue::I8(reader.read_value()?)),
             DataType::I16 => Ok(PropertyValue::I16(reader.read_value()?)),
@@ -96,6 +98,10 @@ impl TdmsMetaData for PropertyValue {
         writer: &mut impl crate::io::writer::TdmsWriter<W>,
     ) -> Result<(), TdmsError> {
         match self {
+            PropertyValue::Void => {
+                writer.write_meta(&self.datatype())?;
+                Ok(())
+            }
             PropertyValue::Boolean(value) => {
                 write_property_components(writer, self.datatype(), value)
             }
@@ -124,6 +130,7 @@ impl TdmsMetaData for PropertyValue {
 
     fn size(&self) -> usize {
         let internal_size = match self {
+            PropertyValue::Void => 0,
             PropertyValue::Boolean(value) => value.size(),
             PropertyValue::I32(value) => value.size(),
             PropertyValue::U32(value) => value.size(),
@@ -271,5 +278,29 @@ mod tests {
         let mut reader = LittleEndianReader::from_reader(Cursor::new(&buffer[..]));
         let value = PropertyValue::read(&mut reader).unwrap();
         assert_eq!(value, PropertyValue::DoubleFloat(51.0));
+    }
+
+    #[test]
+    fn test_void_read() {
+        let mut buffer = vec![];
+        let mut writer = LittleEndianWriter::from_writer(&mut buffer);
+        writer.write_meta(&DataType::Void).unwrap();
+        drop(writer);
+
+        let mut reader = LittleEndianReader::from_reader(Cursor::new(&buffer[..]));
+        let value = PropertyValue::read(&mut reader).unwrap();
+        assert_eq!(value, PropertyValue::Void);
+    }
+
+    #[test]
+    fn test_void_roundtrip() {
+        let mut buffer = vec![];
+        let mut writer = LittleEndianWriter::from_writer(&mut buffer);
+        PropertyValue::Void.write(&mut writer).unwrap();
+        drop(writer);
+
+        let mut reader = LittleEndianReader::from_reader(Cursor::new(&buffer[..]));
+        let value = PropertyValue::read(&mut reader).unwrap();
+        assert_eq!(value, PropertyValue::Void);
     }
 }
