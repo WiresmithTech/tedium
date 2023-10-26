@@ -121,9 +121,8 @@ impl DataBlock {
                     size += ChunkSize::Variable(total_size);
                 }
                 None => {
-                    size += ChunkSize::Fixed(
-                        channel.number_of_values as u64 * channel.data_type.size() as u64,
-                    )
+                    size +=
+                        ChunkSize::Fixed(channel.number_of_values * channel.data_type.size() as u64)
                 }
             }
         }

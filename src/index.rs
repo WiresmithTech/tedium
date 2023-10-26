@@ -4,12 +4,11 @@
 //! This will store known objects and their properties and data locations
 //! and make them easy to access.
 //!
-
 use std::collections::HashMap;
 
 use crate::error::TdmsError;
 use crate::meta_data::{ObjectMetaData, RawDataIndex, RawDataMeta, Segment};
-use crate::paths::{ChannelPath, PropertyPath};
+use crate::paths::{ChannelPath, ObjectPath, PropertyPath};
 use crate::raw_data::DataBlock;
 use crate::PropertyValue;
 
@@ -20,6 +19,8 @@ pub struct DataLocation {
     pub data_block: usize,
     /// The channel index in that block.
     pub channel_index: usize,
+    /// The number of samples in this location
+    pub number_of_samples: u64,
 }
 
 ///Represents actual data formats that can store data.
@@ -77,6 +78,11 @@ impl ObjectData {
         for (name, value) in other.properties.iter() {
             self.properties.insert(name.clone(), value.clone());
         }
+
+        // Update the format. We want to keep the latest format correct.
+        // If we have a format we should save it.
+        // If it matches previous, we just shouldn't update it.
+        // If none, do nothing.
         if let Some(format) = DataFormat::from_index(&other.raw_data_index) {
             self.latest_data_format = Some(format)
         }
@@ -98,10 +104,32 @@ impl ObjectData {
 #[derive(Debug, Clone)]
 struct ActiveObject {
     path: String,
+    number_of_samples: u64,
 }
 
 impl ActiveObject {
-    fn update(&mut self, _meta: &ObjectMetaData) {}
+    fn new(path: &str, format: &DataFormat) -> Self {
+        println!("Create active object {}", path);
+        let path = path.to_string();
+        let number_of_samples = match format {
+            DataFormat::RawData(raw) => raw.number_of_values,
+        };
+
+        Self {
+            path,
+            number_of_samples,
+        }
+    }
+    fn update(&mut self, meta: &ObjectMetaData) {
+        println!("Update {} with {:?}", self.path, meta.raw_data_index);
+        match meta.raw_data_index {
+            RawDataIndex::RawData(ref raw) => {
+                self.number_of_samples = raw.number_of_values;
+                println!("Set {} to {} samples", self.path, self.number_of_samples);
+            }
+            _ => {}
+        }
+    }
 
     /// Fetch the corresponding [`ObjectData`] for the active object.
     fn get_object_data<'c>(&self, index: &'c Objectindex) -> &'c ObjectData {
@@ -188,12 +216,21 @@ impl Index {
 
     fn insert_data_block(&mut self, block: DataBlock) {
         let data_index = self.data_blocks.len();
+        println!("Inserting data block at {}", data_index);
+        println!("Data block {:?}", block);
+
+        // get counts from block.
+        let chunks = block.number_of_chunks();
+        println!("Chunks {}", chunks);
+
         self.data_blocks.push(block);
 
         for (channel_index, active_object) in self.active_objects.iter_mut().enumerate() {
+            let number_of_samples = active_object.number_of_samples * chunks as u64;
             let location = DataLocation {
                 data_block: data_index,
                 channel_index,
+                number_of_samples,
             };
             active_object
                 .get_object_data_mut(&mut self.objects)
@@ -225,10 +262,14 @@ impl Index {
                     .update(object);
             }
             None => {
-                self.active_objects.push(ActiveObject {
-                    path: object.path.clone(),
-                });
                 self.update_meta_object(object);
+                // Must fetch the latest format in case this is same as previous.
+                let format = self
+                    .channel_format(&object.path)
+                    .expect("Should not reach this if there is no data with the object.");
+
+                self.active_objects
+                    .push(ActiveObject::new(&object.path, format));
             }
         }
     }
@@ -249,6 +290,19 @@ impl Index {
             }
         }
     }
+
+    /// Get the current format for the channel.
+    ///
+    /// Returns none if we have no channel.
+    fn channel_format(&self, path: ObjectPath) -> Option<&DataFormat> {
+        self.objects
+            .get(path)
+            .and_then(|object| object.latest_data_format.as_ref())
+    }
+
+    /// Get all of the properties for the given object.
+    ///
+    /// Returns none if the object does not exist.
     pub fn get_object_properties(
         &self,
         path: &PropertyPath,
@@ -258,6 +312,10 @@ impl Index {
             .map(|object| object.get_all_properties())
     }
 
+    /// Get the property value for the given object.
+    ///
+    /// Errors if the object does not exist.
+    /// Will contain a None if the property does not exist.
     pub fn get_object_property(
         &self,
         path: &PropertyPath,
@@ -283,6 +341,8 @@ impl Index {
         self.data_blocks.get(index)
     }
 
+    /// Validates the data formats for the objects to include
+    /// in the next segment.
     pub fn check_write_values<'b>(
         &self,
         objects: Vec<(&'b str, DataFormat)>,
@@ -335,7 +395,7 @@ mod tests {
     fn test_single_segment() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -398,7 +458,8 @@ mod tests {
             ch1_data,
             &[DataLocation {
                 data_block: 0,
-                channel_index: 0
+                channel_index: 0,
+                number_of_samples: 1000
             }]
         );
         let ch2_data = index
@@ -408,7 +469,92 @@ mod tests {
             ch2_data,
             &[DataLocation {
                 data_block: 0,
-                channel_index: 1
+                channel_index: 1,
+                number_of_samples: 1000
+            }]
+        );
+    }
+
+    #[test]
+    fn test_builds_correct_length_with_multiple_write_blocks() {
+        let segment = Segment {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 33000,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "/'group'".to_string(),
+                        properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                        raw_data_index: RawDataIndex::None,
+                    },
+                    ObjectMetaData {
+                        path: "/'group'/'ch1'".to_string(),
+                        properties: vec![("Prop1".to_string(), PropertyValue::I32(-1))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                    ObjectMetaData {
+                        path: "/'group'/'ch2'".to_string(),
+                        properties: vec![("Prop2".to_string(), PropertyValue::I32(-2))],
+                        raw_data_index: RawDataIndex::RawData(RawDataMeta {
+                            data_type: DataType::DoubleFloat,
+                            number_of_values: 1000,
+                            total_size_bytes: None,
+                        }),
+                    },
+                ],
+            }),
+        };
+
+        let mut index = Index::new();
+        index.add_segment(segment);
+
+        let group_properties = index
+            .get_object_properties(&PropertyPath::group("group"))
+            .unwrap();
+        assert_eq!(
+            group_properties,
+            &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
+        );
+        let ch1_properties = index
+            .get_object_properties(&ChannelPath::new("group", "ch1").as_ref())
+            .unwrap();
+        assert_eq!(
+            ch1_properties,
+            &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
+        );
+        let ch2_properties = index
+            .get_object_properties(&ChannelPath::new("group", "ch2").as_ref())
+            .unwrap();
+        assert_eq!(
+            ch2_properties,
+            &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
+        );
+
+        let ch1_data = index
+            .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
+            .unwrap();
+        assert_eq!(
+            ch1_data,
+            &[DataLocation {
+                data_block: 0,
+                channel_index: 0,
+                number_of_samples: 2000
+            }]
+        );
+        let ch2_data = index
+            .get_channel_data_positions(&ChannelPath::new("group", "ch2"))
+            .unwrap();
+        assert_eq!(
+            ch2_data,
+            &[DataLocation {
+                data_block: 0,
+                channel_index: 1,
+                number_of_samples: 2000
             }]
         );
     }
@@ -738,7 +884,7 @@ mod tests {
     fn can_update_properties_with_no_changes_to_data_layout() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -770,7 +916,7 @@ mod tests {
         };
         let segment2 = Segment {
             toc: ToC::from_u32(0xA),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
@@ -815,11 +961,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -831,11 +979,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -846,7 +996,7 @@ mod tests {
     fn can_keep_data_with_no_objects_listed() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -878,7 +1028,7 @@ mod tests {
         };
         let segment2 = Segment {
             toc: ToC::from_u32(0xA),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData { objects: vec![] }),
         };
@@ -895,11 +1045,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -911,11 +1063,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -926,7 +1080,7 @@ mod tests {
     fn can_keep_data_with_no_metadata_in_toc() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -958,7 +1112,7 @@ mod tests {
         };
         let segment2 = Segment {
             toc: ToC::from_u32(0x8),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData { objects: vec![] }),
         };
@@ -975,11 +1129,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -991,11 +1147,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -1005,7 +1163,7 @@ mod tests {
     fn can_add_channel_to_active_list() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -1037,7 +1195,7 @@ mod tests {
         };
         let segment2 = Segment {
             toc: ToC::from_u32(0xA),
-            next_segment_offset: 500,
+            next_segment_offset: 25000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
@@ -1072,11 +1230,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -1088,11 +1248,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 1,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -1103,7 +1265,8 @@ mod tests {
             ch3_data,
             &[DataLocation {
                 data_block: 1,
-                channel_index: 2
+                channel_index: 2,
+                number_of_samples: 1000
             }]
         );
     }
@@ -1112,7 +1275,7 @@ mod tests {
     fn can_replace_the_existing_list() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 20000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -1144,7 +1307,7 @@ mod tests {
         };
         let segment2 = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 9000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
@@ -1178,7 +1341,8 @@ mod tests {
             ch1_data,
             &[DataLocation {
                 data_block: 0,
-                channel_index: 0
+                channel_index: 0,
+                number_of_samples: 1000
             },]
         );
         let ch2_data = index
@@ -1188,7 +1352,8 @@ mod tests {
             ch2_data,
             &[DataLocation {
                 data_block: 0,
-                channel_index: 1
+                channel_index: 1,
+                number_of_samples: 1000
             },]
         );
         let ch3_data = index
@@ -1198,7 +1363,8 @@ mod tests {
             ch3_data,
             &[DataLocation {
                 data_block: 1,
-                channel_index: 0
+                channel_index: 0,
+                number_of_samples: 1000
             }]
         );
     }
@@ -1207,7 +1373,7 @@ mod tests {
     fn can_re_add_channel_to_active_list() {
         let segment = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 17000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![
@@ -1239,7 +1405,7 @@ mod tests {
         };
         let segment2 = Segment {
             toc: ToC::from_u32(0xE),
-            next_segment_offset: 500,
+            next_segment_offset: 9000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
@@ -1255,7 +1421,7 @@ mod tests {
         };
         let segment3 = Segment {
             toc: ToC::from_u32(0xA),
-            next_segment_offset: 500,
+            next_segment_offset: 25000,
             raw_data_offset: 20,
             meta_data: Some(MetaData {
                 objects: vec![ObjectMetaData {
@@ -1283,11 +1449,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 0,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 2,
-                    channel_index: 1
+                    channel_index: 1,
+                    number_of_samples: 1000
                 }
             ]
         );
@@ -1298,7 +1466,8 @@ mod tests {
             ch2_data,
             &[DataLocation {
                 data_block: 0,
-                channel_index: 1
+                channel_index: 1,
+                number_of_samples: 1000
             },]
         );
         let ch3_data = index
@@ -1309,11 +1478,13 @@ mod tests {
             &[
                 DataLocation {
                     data_block: 1,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 },
                 DataLocation {
                     data_block: 2,
-                    channel_index: 0
+                    channel_index: 0,
+                    number_of_samples: 1000
                 }
             ]
         );

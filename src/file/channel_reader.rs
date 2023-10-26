@@ -245,10 +245,12 @@ mod tests {
             DataLocation {
                 data_block: 20,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 21,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
         ];
 
@@ -274,10 +276,12 @@ mod tests {
             DataLocation {
                 data_block: 20,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 21,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
         ];
 
@@ -285,10 +289,12 @@ mod tests {
             DataLocation {
                 data_block: 20,
                 channel_index: 2,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 21,
                 channel_index: 0,
+                number_of_samples: 1000,
             },
         ];
 
@@ -314,14 +320,17 @@ mod tests {
             DataLocation {
                 data_block: 20,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 21,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 25,
                 channel_index: 0,
+                number_of_samples: 1000,
             },
         ];
 
@@ -329,14 +338,17 @@ mod tests {
             DataLocation {
                 data_block: 20,
                 channel_index: 2,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 21,
                 channel_index: 0,
+                number_of_samples: 1000,
             },
             DataLocation {
                 data_block: 22,
                 channel_index: 1,
+                number_of_samples: 1000,
             },
         ];
 

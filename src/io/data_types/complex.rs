@@ -102,6 +102,6 @@ mod tests {
         };
     }
 
-    test_formatting!("ComplexSingle", Complex<f32>, Complex::new(1.0, 2.0));
-    test_formatting!("ComplexDouble", Complex<f64>, Complex::new(1.0, 2.0));
+    test_formatting!("complex_single", Complex<f32>, Complex::new(1.0, 2.0));
+    test_formatting!("complex_double", Complex<f64>, Complex::new(1.0, 2.0));
 }
