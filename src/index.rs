@@ -109,7 +109,6 @@ struct ActiveObject {
 
 impl ActiveObject {
     fn new(path: &str, format: &DataFormat) -> Self {
-        println!("Create active object {}", path);
         let path = path.to_string();
         let number_of_samples = match format {
             DataFormat::RawData(raw) => raw.number_of_values,
@@ -121,13 +120,8 @@ impl ActiveObject {
         }
     }
     fn update(&mut self, meta: &ObjectMetaData) {
-        println!("Update {} with {:?}", self.path, meta.raw_data_index);
-        match meta.raw_data_index {
-            RawDataIndex::RawData(ref raw) => {
-                self.number_of_samples = raw.number_of_values;
-                println!("Set {} to {} samples", self.path, self.number_of_samples);
-            }
-            _ => {}
+        if let RawDataIndex::RawData(ref raw) = meta.raw_data_index {
+            self.number_of_samples = raw.number_of_values;
         }
     }
 
@@ -216,12 +210,9 @@ impl Index {
 
     fn insert_data_block(&mut self, block: DataBlock) {
         let data_index = self.data_blocks.len();
-        println!("Inserting data block at {}", data_index);
-        println!("Data block {:?}", block);
 
         // get counts from block.
         let chunks = block.number_of_chunks();
-        println!("Chunks {}", chunks);
 
         self.data_blocks.push(block);
 
@@ -335,6 +326,19 @@ impl Index {
         self.objects
             .get(path.path())
             .map(|object| &object.data_locations[..])
+    }
+
+    /// Get the length of the channel.
+    ///
+    /// Returns None if the channel does not exist.
+    pub fn channel_length(&self, path: &ChannelPath) -> Option<u64> {
+        self.objects.get(path.path()).map(|object| {
+            object
+                .data_locations
+                .iter()
+                .map(|location| location.number_of_samples)
+                .sum()
+        })
     }
 
     pub fn get_data_block(&self, index: usize) -> Option<&DataBlock> {
@@ -473,6 +477,15 @@ mod tests {
                 number_of_samples: 1000
             }]
         );
+
+        assert_eq!(
+            index.channel_length(&ChannelPath::new("group", "ch1")),
+            Some(1000)
+        );
+        assert_eq!(
+            index.channel_length(&ChannelPath::new("group", "ch2")),
+            Some(1000)
+        );
     }
 
     #[test]
@@ -556,6 +569,14 @@ mod tests {
                 channel_index: 1,
                 number_of_samples: 2000
             }]
+        );
+        assert_eq!(
+            index.channel_length(&ChannelPath::new("group", "ch1")),
+            Some(2000)
+        );
+        assert_eq!(
+            index.channel_length(&ChannelPath::new("group", "ch2")),
+            Some(2000)
         );
     }
 

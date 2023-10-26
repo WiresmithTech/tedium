@@ -15,10 +15,13 @@ fn test_data(channel_index: usize) -> Vec<f64> {
 #[test]
 fn test_single_channel_read() {
     let mut file = common::open_test_file();
+    let path = ChannelPath::new("structure", "ch3");
     let expected = test_data(2);
+
+    assert_eq!(file.channel_length(&path).unwrap(), expected.len() as u64);
+
     let mut buffer = vec![0.0; expected.len()];
-    file.read_channel(&ChannelPath::new("structure", "ch3"), &mut buffer[..])
-        .unwrap();
+    file.read_channel(&path, &mut buffer[..]).unwrap();
 
     assert_eq!(buffer, expected);
 }
@@ -26,18 +29,19 @@ fn test_single_channel_read() {
 #[test]
 fn test_multi_channel_read_same_length() {
     let mut file = common::open_test_file();
+    let path0 = ChannelPath::new("structure", "ch1");
+    let path2 = ChannelPath::new("structure", "ch3");
+
     let expected0 = test_data(0);
     let expected2 = test_data(2);
+
+    assert_eq!(file.channel_length(&path0).unwrap(), expected0.len() as u64);
+    assert_eq!(file.channel_length(&path2).unwrap(), expected2.len() as u64);
+
     let mut buffer0 = vec![0.0; expected0.len()];
     let mut buffer2 = vec![0.0; expected2.len()];
-    file.read_channels(
-        &[
-            &ChannelPath::new("structure", "ch1"),
-            &ChannelPath::new("structure", "ch3"),
-        ],
-        &mut [&mut buffer0[..], &mut buffer2[..]],
-    )
-    .unwrap();
+    file.read_channels(&[&path0, &path2], &mut [&mut buffer0[..], &mut buffer2[..]])
+        .unwrap();
 
     assert_eq!(buffer0, expected0);
     assert_eq!(buffer2, expected2);

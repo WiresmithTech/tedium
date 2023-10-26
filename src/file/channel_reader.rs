@@ -37,6 +37,11 @@ impl ChannelProgress {
 }
 
 impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFile<F> {
+    /// Get the length of the channel.
+    pub fn channel_length(&self, channel: &ChannelPath) -> Option<u64> {
+        self.index.channel_length(channel)
+    }
+
     /// Read a single channel from the tdms file.
     ///
     /// channel should provide a path to the channel and output is a mutable slice for the data to be written into.
