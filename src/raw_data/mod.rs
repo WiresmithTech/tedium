@@ -35,6 +35,15 @@ pub enum DataLayout {
     Contigious,
 }
 
+impl std::fmt::Display for DataLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataLayout::Interleaved => write!(f, "Interleaved"),
+            DataLayout::Contigious => write!(f, "Contigious"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Endianess {
     Big,
