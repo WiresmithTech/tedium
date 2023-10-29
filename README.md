@@ -40,3 +40,8 @@ If you look through the library you will see some key modules:
 * **raw_data:** This module wraps the logic for reading channel data from the raw segments. A key goal for this library was to maximize performance so this includes a stage to plan an optimal read structure (in `records.rs`) and then execute that against the two forms so we minimize disk reads.
 * **index:** This is the in memory index structure that is built when we first scan a file and can use to look up properties and segments.
 * **meta_data:** This handles reading the segment headers out of the file which can be ingested into the index.
+
+
+## Criterion Benchmarks
+
+We use criterion benchmarks to monitor for possible performance improvements. These use memory buffers instead of files which means the numbers are not representative of real use but instead represent the maximum possible speed given the library and format overheads.
