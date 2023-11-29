@@ -29,4 +29,8 @@ pub enum TdmsError {
     DataTypeMismatch(DataType, DataType),
     #[error("Attempted to read past the end of the file")]
     EndOfFile,
+    #[error("The start address for the next segment is invalid. The address overflowed. The file is likely corrupt.")]
+    SegmentAddressOverflow,
+    #[error("The segment ToC expects a data block but no data channels are present. The file is likely corrupt.")]
+    SegmentTocDataBlockWithoutDataChannels,
 }

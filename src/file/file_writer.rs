@@ -77,7 +77,7 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
             ..Default::default()
         };
         let segment = self.writer.write_segment(toc, meta, Some(raw_data))?;
-        self.index.add_segment(segment);
+        self.index.add_segment(segment)?;
         Ok(())
     }
 
@@ -123,7 +123,7 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
         let segment =
             self.writer
                 .write_segment(ToC::default(), Some(meta), Option::<&[u8]>::None)?;
-        self.index.add_segment(segment);
+        self.index.add_segment(segment)?;
         Ok(())
     }
 

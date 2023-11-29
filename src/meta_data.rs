@@ -166,8 +166,11 @@ pub struct Segment {
 }
 
 impl Segment {
-    pub fn total_size_bytes(&self) -> u64 {
-        LEAD_IN_BYTES + self.next_segment_offset
+    pub fn total_size_bytes(&self) -> Result<u64, TdmsError> {
+        match self.next_segment_offset.checked_add(LEAD_IN_BYTES) {
+            Some(size) => Ok(size),
+            None => Err(TdmsError::SegmentAddressOverflow),
+        }
     }
 
     pub fn read(reader: &mut (impl Read + Seek)) -> Result<Segment, TdmsError> {
@@ -364,7 +367,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(segment.total_size_bytes(), 528);
+        assert!(matches!(segment.total_size_bytes(), Ok(528)));
     }
 
     #[test]

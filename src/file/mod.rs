@@ -58,7 +58,7 @@ fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
     loop {
         match Segment::read(file) {
             Ok(segment) => {
-                let next_segment = index.add_segment(segment);
+                let next_segment = index.add_segment(segment)?;
                 if file.seek(SeekFrom::Start(next_segment)).is_err() {
                     break;
                 }

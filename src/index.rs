@@ -159,7 +159,10 @@ impl Index {
     /// Add the data for the next segment read from the file.
     ///
     /// Returns the start position of the next segment.
-    pub fn add_segment(&mut self, segment: Segment) -> u64 {
+    ///
+    /// Errors if:
+    /// * The next segment address overflows.
+    pub fn add_segment(&mut self, segment: Segment) -> Result<u64, TdmsError> {
         //Basic procedure.
         //1. If new object list is set, clear active objects.
         //2. Update the active object list - adding new objects or updating properties and data locations for existing objects.
@@ -179,17 +182,24 @@ impl Index {
         }
 
         if segment.toc.contains_raw_data {
-            let data_block = DataBlock::from_segment(
-                &segment,
-                self.next_segment_start,
-                self.get_active_raw_data_meta(),
-            );
+            let active_data_channels = self.get_active_raw_data_meta();
+
+            if active_data_channels.is_empty() {
+                return Err(TdmsError::SegmentTocDataBlockWithoutDataChannels);
+            }
+
+            let data_block =
+                DataBlock::from_segment(&segment, self.next_segment_start, active_data_channels);
 
             self.insert_data_block(data_block);
         }
 
-        self.next_segment_start += segment.total_size_bytes();
-        self.next_segment_start
+        let segment_size = segment.total_size_bytes()?;
+        match self.next_segment_start.checked_add(segment_size) {
+            Some(next_segment_start) => self.next_segment_start = next_segment_start,
+            None => return Err(TdmsError::SegmentAddressOverflow),
+        }
+        Ok(self.next_segment_start)
     }
 
     /// Get all of the [`RawDataMeta`] for the active channels.
@@ -431,7 +441,7 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
@@ -524,7 +534,7 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
@@ -616,7 +626,7 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let expected_data_block = DataBlock {
             start: 48,
@@ -696,8 +706,8 @@ mod tests {
             }),
         };
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let expected_data_block = DataBlock {
             start: 576,
@@ -777,8 +787,8 @@ mod tests {
             }),
         };
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let expected_data_block = DataBlock {
             start: 576,
@@ -819,7 +829,7 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let block = index.get_data_block(0);
         assert_eq!(block, None);
@@ -881,8 +891,8 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
@@ -949,8 +959,8 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
@@ -1055,8 +1065,8 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let ch1_data = index
             .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
@@ -1139,8 +1149,8 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let ch1_data = index
             .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
@@ -1232,8 +1242,8 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let ch3_properties = index
             .get_object_properties(ChannelPath::new("group", "ch3").as_ref())
@@ -1344,8 +1354,8 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let ch3_properties = index
             .get_object_properties(ChannelPath::new("group", "ch3").as_ref())
@@ -1458,9 +1468,9 @@ mod tests {
         };
 
         let mut index = Index::new();
-        index.add_segment(segment);
-        index.add_segment(segment2);
-        index.add_segment(segment3);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
+        index.add_segment(segment3).unwrap();
 
         let ch1_data = index
             .get_channel_data_positions(&ChannelPath::new("group", "ch1"))
@@ -1594,7 +1604,7 @@ mod tests {
         };
 
         let mut index = Index::default();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let channels = vec![
             (
@@ -1681,8 +1691,8 @@ mod tests {
         };
 
         let mut index = Index::default();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let channels = vec![
             (
@@ -1749,7 +1759,7 @@ mod tests {
         };
 
         let mut index = Index::default();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let channels = vec![
             (
@@ -1823,7 +1833,7 @@ mod tests {
         };
 
         let mut index = Index::default();
-        index.add_segment(segment);
+        index.add_segment(segment).unwrap();
 
         let channels = vec![
             (
@@ -1937,8 +1947,8 @@ mod tests {
         };
 
         let mut index = Index::default();
-        index.add_segment(segment);
-        index.add_segment(segment2);
+        index.add_segment(segment).unwrap();
+        index.add_segment(segment2).unwrap();
 
         let channels = vec![
             (
@@ -1967,5 +1977,51 @@ mod tests {
         ];
 
         assert_eq!(data_format, expected_format);
+    }
+
+    #[test]
+    fn test_toc_includes_data_but_no_active_channels() {
+        let segment = Segment {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 20000,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "/'group'".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                }],
+            }),
+        };
+
+        let mut index = Index::new();
+        let next_segment = index.add_segment(segment);
+        assert!(matches!(
+            next_segment,
+            Err(TdmsError::SegmentTocDataBlockWithoutDataChannels)
+        ));
+    }
+
+    #[test]
+    fn test_catches_next_segment_overflow() {
+        let segment = Segment {
+            toc: ToC::from_u32(0x2),
+            next_segment_offset: 0xFFFF_FFFF_FFFF_FFE4,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "/'group'".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                }],
+            }),
+        };
+
+        let mut index = Index::new();
+        let next_segment = index.add_segment(segment);
+        assert!(matches!(
+            next_segment,
+            Err(TdmsError::SegmentAddressOverflow)
+        ));
     }
 }
