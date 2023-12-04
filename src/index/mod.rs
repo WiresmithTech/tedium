@@ -2024,4 +2024,27 @@ mod tests {
             Err(TdmsError::SegmentAddressOverflow)
         ));
     }
+
+    #[test]
+    fn test_toc_includes_data_but_no_size() {
+        let segment = Segment {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 20,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![ObjectMetaData {
+                    path: "/'group'".to_string(),
+                    properties: vec![("Prop".to_string(), PropertyValue::I32(-51))],
+                    raw_data_index: RawDataIndex::None,
+                }],
+            }),
+        };
+
+        let mut index = Index::new();
+        let next_segment = index.add_segment(segment);
+        assert!(matches!(
+            next_segment,
+            Err(TdmsError::SegmentTocDataBlockWithoutDataChannels)
+        ));
+    }
 }
