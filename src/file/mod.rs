@@ -9,10 +9,13 @@ use std::{
     path::Path,
 };
 
-use crate::index::Index;
-use crate::io::writer::{LittleEndianWriter, TdmsWriter};
 use crate::meta_data::Segment;
 use crate::{error::TdmsError, PropertyPath, PropertyValue};
+use crate::{index::Index, ChannelPath};
+use crate::{
+    io::writer::{LittleEndianWriter, TdmsWriter},
+    paths::path_group_name,
+};
 pub use file_writer::TdmsFileWriter;
 
 /// A TDMS file.
@@ -115,6 +118,38 @@ impl<F: Write + Read + Seek + std::fmt::Debug> TdmsFile<F> {
         self.index.get_object_properties(object_path)
     }
 
+    /// Read all groups in the file.
+    ///
+    /// Returns an iterator to the paths for each group.
+    pub fn list_groups<'a>(&'a self) -> impl Iterator<Item = PropertyPath> + 'a {
+        // We cannot guarantee a seperate path for the group has been written
+        // as they are implicitly included in the channel path as well.
+        // Therefore extract all possible group names from all paths and deduplicate.
+        // Use a btreeset to deduplicate the paths.
+        let mut groups = std::collections::BTreeSet::new();
+
+        let paths = self.index.all_paths();
+        for path in paths {
+            let group_name = path_group_name(path);
+            if let Some(group_name) = group_name {
+                groups.insert(group_name);
+            }
+        }
+
+        groups.into_iter().map(PropertyPath::group)
+    }
+
+    /// Read all the channels in a group.
+    ///
+    /// Returns an iterator to the paths for each channel.
+    pub fn list_channels_in_group<'a: 'c, 'b: 'c, 'c>(
+        &'a self,
+        group: &'b PropertyPath,
+    ) -> impl Iterator<Item = ChannelPath> + 'c {
+        let paths = self.index.paths_starting_with(group.path());
+        paths.filter_map(|path| ChannelPath::try_from(path).ok())
+    }
+
     /// Get a writer for the TDMS data so that you can write data.
     ///
     /// While this is in use you will not be able to access the read API.
@@ -153,7 +188,15 @@ mod tests {
 
     use std::io::Cursor;
 
+    use crate::DataLayout;
+
     use super::*;
+
+    fn new_empty_file() -> TdmsFile<Cursor<Vec<u8>>> {
+        let buffer = Vec::new();
+        let cursor = Cursor::new(buffer);
+        TdmsFile::new(cursor).unwrap()
+    }
 
     #[test]
     fn test_can_load_empty_buffer() {
@@ -161,5 +204,137 @@ mod tests {
         let mut cursor = Cursor::new(buffer);
         let result = build_index(&mut cursor);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_list_groups_with_properties_single() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_properties(
+                &PropertyPath::group("group"),
+                &[("name", PropertyValue::String("my_channel".to_string()))],
+            )
+            .unwrap();
+
+        drop(writer);
+        let groups: Vec<_> = file.list_groups().collect();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0], PropertyPath::group("group"));
+    }
+
+    #[test]
+    fn test_list_groups_with_properties_multiple() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_properties(
+                &PropertyPath::group("group"),
+                &[("name", PropertyValue::String("my_channel".to_string()))],
+            )
+            .unwrap();
+        writer
+            .write_properties(
+                &PropertyPath::group("group2"),
+                &[("name", PropertyValue::String("my_channel".to_string()))],
+            )
+            .unwrap();
+
+        drop(writer);
+        let groups: Vec<_> = file.list_groups().collect();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0], PropertyPath::group("group"));
+        assert_eq!(groups[1], PropertyPath::group("group2"));
+    }
+
+    #[test]
+    fn test_list_implicit_groups_from_channels() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[ChannelPath::new("group", "channel")],
+                &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+
+        drop(writer);
+        let groups: Vec<_> = file.list_groups().collect();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0], PropertyPath::group("group"));
+    }
+
+    #[test]
+    fn test_list_channels_in_group_single() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[ChannelPath::new("group", "channel")],
+                &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+
+        drop(writer);
+        let channels: Vec<_> = file
+            .list_channels_in_group(&PropertyPath::group("group"))
+            .collect();
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0], ChannelPath::new("group", "channel"));
+    }
+
+    #[test]
+    fn test_list_channels_in_group_multiple() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[ChannelPath::new("group", "channel")],
+                &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+        writer
+            .write_channels(
+                &[ChannelPath::new("group", "channel2")],
+                &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+
+        drop(writer);
+        let channels: Vec<_> = file
+            .list_channels_in_group(&PropertyPath::group("group"))
+            .collect();
+        assert_eq!(channels.len(), 2);
+        assert_eq!(channels[0], ChannelPath::new("group", "channel"));
+        assert_eq!(channels[1], ChannelPath::new("group", "channel2"));
+    }
+
+    #[test]
+    fn test_list_channels_in_group_none() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[ChannelPath::new("group", "channel")],
+                &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+
+        drop(writer);
+        let channels: Vec<_> = file
+            .list_channels_in_group(&PropertyPath::group("group2"))
+            .collect();
+        assert_eq!(channels.len(), 0);
     }
 }

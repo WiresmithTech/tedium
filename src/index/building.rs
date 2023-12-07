@@ -11,7 +11,7 @@ use crate::{
     raw_data::DataBlock,
 };
 
-use super::{DataFormat, DataLocation, ObjectData, Objectindex};
+use super::{DataFormat, DataLocation, ObjectData, ObjectIndex};
 
 /// Data cached for the current "active" objects which are the objects
 /// that we are expecting data in the next data block.
@@ -40,14 +40,14 @@ impl ActiveObject {
     }
 
     /// Fetch the corresponding [`ObjectData`] for the active object.
-    fn get_object_data<'c>(&self, index: &'c Objectindex) -> &'c ObjectData {
+    fn get_object_data<'c>(&self, index: &'c ObjectIndex) -> &'c ObjectData {
         index
             .get(&self.path)
             .expect("Should always have a registered version of active object")
     }
 
     /// Fetch the corresponding [`ObjectData`] for the active object in a mutable form.
-    fn get_object_data_mut<'c>(&self, index: &'c mut Objectindex) -> &'c mut ObjectData {
+    fn get_object_data_mut<'c>(&self, index: &'c mut ObjectIndex) -> &'c mut ObjectData {
         index
             .get_mut(&self.path)
             .expect("Should always have a registered version of active object")

@@ -9,7 +9,7 @@ mod building;
 mod querying;
 mod writing;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::error::TdmsError;
 use crate::meta_data::{ObjectMetaData, RawDataIndex, RawDataMeta};
@@ -56,7 +56,7 @@ impl From<DataFormat> for RawDataIndex {
 #[derive(Clone, PartialEq, Debug)]
 struct ObjectData {
     path: String,
-    properties: HashMap<String, PropertyValue>,
+    properties: BTreeMap<String, PropertyValue>,
     data_locations: Vec<DataLocation>,
     latest_data_format: Option<DataFormat>,
 }
@@ -66,7 +66,7 @@ impl ObjectData {
     fn from_metadata(meta: &ObjectMetaData) -> Self {
         let mut new = Self {
             path: meta.path.clone(),
-            properties: HashMap::new(),
+            properties: BTreeMap::new(),
             data_locations: vec![],
             latest_data_format: None,
         };
@@ -105,12 +105,12 @@ impl ObjectData {
 }
 
 /// The inner format for registering the objects.
-type Objectindex = HashMap<String, ObjectData>;
+type ObjectIndex = BTreeMap<String, ObjectData>;
 
 #[derive(Default, Debug, Clone)]
 pub struct Index {
     active_objects: Vec<building::ActiveObject>,
-    objects: Objectindex,
+    objects: ObjectIndex,
     data_blocks: Vec<DataBlock>,
     next_segment_start: u64,
 }

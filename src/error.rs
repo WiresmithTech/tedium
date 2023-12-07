@@ -33,4 +33,8 @@ pub enum TdmsError {
     SegmentAddressOverflow,
     #[error("The segment ToC expects a data block but no data channels are present. The file is likely corrupt.")]
     SegmentTocDataBlockWithoutDataChannels,
+    #[error("Attempted to parse an invalid object path. {0}")]
+    InvalidObjectPath(String),
+    #[error("Attempted to parse an valid but unsuitable path to a channel. {0}")]
+    InvalidChannelPath(String),
 }
