@@ -2,6 +2,7 @@
 name = "tedium"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 homepage = "https://github.com/WiresmithTech/tedium"
 repository = "https://github.com/WiresmithTech/tedium"
 description = "A fast and easy TDMS Library for Rust"
