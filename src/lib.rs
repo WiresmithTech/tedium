@@ -8,6 +8,7 @@ mod properties;
 mod raw_data;
 
 // Re-exports.
+pub use error::TdmsError;
 pub use file::TdmsFile;
 pub use file::TdmsFileWriter;
 pub use io::data_types::TdmsStorageType;
