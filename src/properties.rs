@@ -211,6 +211,46 @@ impl_conversion_for_property_value!(LVTime, Timestamp);
 impl_conversion_for_property_value!(Complex<f32>, ComplexSingleFloat);
 impl_conversion_for_property_value!(Complex<f64>, ComplexDoubleFloat);
 
+impl From<String> for PropertyValue {
+    fn from(value: String) -> Self {
+        PropertyValue::String(value)
+    }
+}
+
+impl TryFrom<PropertyValue> for String {
+    type Error = TdmsError;
+
+    fn try_from(value: PropertyValue) -> Result<Self, Self::Error> {
+        match value {
+            PropertyValue::String(value) => Ok(value),
+            _ => Err(TdmsError::DataTypeMismatch(
+                value.datatype(),
+                DataType::TdmsString,
+            )),
+        }
+    }
+}
+
+impl<'a> From<&'a str> for PropertyValue {
+    fn from(value: &'a str) -> Self {
+        PropertyValue::String(value.to_string())
+    }
+}
+
+impl<'a> TryFrom<&'a PropertyValue> for &'a str {
+    type Error = TdmsError;
+
+    fn try_from(value: &'a PropertyValue) -> Result<Self, Self::Error> {
+        match value {
+            PropertyValue::String(value) => Ok(value.as_str()),
+            _ => Err(TdmsError::DataTypeMismatch(
+                value.datatype(),
+                DataType::TdmsString,
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +397,25 @@ mod tests {
         let mut reader = LittleEndianReader::from_reader(Cursor::new(&buffer[..]));
         let value = PropertyValue::read(&mut reader).unwrap();
         assert_eq!(value, PropertyValue::Void);
+    }
+
+    #[test]
+    fn test_string_conversion() {
+        let value = "Hello World".to_string();
+        let prop_value: PropertyValue = value.clone().into();
+        assert_eq!(prop_value, PropertyValue::String(value));
+
+        let value: String = prop_value.try_into().unwrap();
+        assert_eq!(value, "Hello World");
+    }
+
+    #[test]
+    fn test_str_conversion() {
+        let value = "Hello World";
+        let prop_value: PropertyValue = value.into();
+        assert_eq!(prop_value, PropertyValue::String(value.to_string()));
+
+        let value: &str = (&prop_value).try_into().unwrap();
+        assert_eq!(value, "Hello World");
     }
 }
