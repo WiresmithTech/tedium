@@ -28,7 +28,7 @@ pub use file_writer::TdmsFileWriter;
 ///
 /// To write to a file use [`Self::writer`]. This will return a writer that can be used to write data to the file.
 #[derive(Debug)]
-pub struct TdmsFile<F: Write + Read + Seek + std::fmt::Debug> {
+pub struct TdmsFile<F: Read + Seek> {
     index: Index,
     file: F,
 }
@@ -73,7 +73,7 @@ fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
     Ok(index)
 }
 
-impl<F: Write + Read + Seek + std::fmt::Debug> TdmsFile<F> {
+impl<F: Read + Seek> TdmsFile<F> {
     /// Create a new file from the given stream.
     ///
     /// # Example
@@ -149,7 +149,9 @@ impl<F: Write + Read + Seek + std::fmt::Debug> TdmsFile<F> {
         let paths = self.index.paths_starting_with(group.path());
         paths.filter_map(|path| ChannelPath::try_from(path).ok())
     }
+}
 
+impl<F: Write + Read + Seek> TdmsFile<F> {
     /// Get a writer for the TDMS data so that you can write data.
     ///
     /// While this is in use you will not be able to access the read API.
