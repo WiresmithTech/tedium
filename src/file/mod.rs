@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::meta_data::Segment;
-use crate::{error::TdmsError, PropertyPath, PropertyValue};
+use crate::{DataType, error::TdmsError, PropertyPath, PropertyValue};
 use crate::{index::Index, ChannelPath};
 use crate::{
     io::writer::{LittleEndianWriter, TdmsWriter},
@@ -148,6 +148,15 @@ impl<F: Read + Seek> TdmsFile<F> {
     ) -> impl Iterator<Item = ChannelPath> + 'c {
         let paths = self.index.paths_starting_with(group.path());
         paths.filter_map(|path| ChannelPath::try_from(path).ok())
+    }
+
+    pub fn get_channel_type(&self, channel: &ChannelPath) -> Option<DataType> {
+        let data_type = self.index.channel_type(channel);
+        if let Some(data_type) = data_type {
+            Some(*data_type)
+        } else {
+            None
+        }
     }
 }
 
@@ -338,5 +347,23 @@ mod tests {
             .list_channels_in_group(&PropertyPath::group("group2"))
             .collect();
         assert_eq!(channels.len(), 0);
+    }
+
+    #[test]
+    fn test_get_channel_type() {
+        let mut file = new_empty_file();
+
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[ChannelPath::new("group", "channel")],
+                &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+
+        drop(writer);
+        let channel_type = file.get_channel_type(&ChannelPath::new("group", "channel")).unwrap();
+        assert_eq!(channel_type, DataType::DoubleFloat);
     }
 }
