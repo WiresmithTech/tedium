@@ -35,7 +35,7 @@ fn write_properties<F: Write + Read + Seek + Debug>(file: &mut TdmsFile<F>, path
     let mut writer = file.writer().unwrap();
     writer.write_properties(path, TEST_PROPERTIES).unwrap();
 
-    //this one wont exist as a constant.
+    //this one won't exist as a constant.
     writer
         .write_properties(
             &path,
