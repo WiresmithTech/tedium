@@ -15,7 +15,7 @@ use crate::error::TdmsError;
 use crate::meta_data::{ObjectMetaData, RawDataIndex, RawDataMeta};
 use crate::paths::{ChannelPath, PropertyPath};
 use crate::raw_data::DataBlock;
-use crate::PropertyValue;
+use crate::{DataType, PropertyValue};
 
 /// A store for a given channel point to the data block with its data and the index within that.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +173,23 @@ impl Index {
     pub fn get_data_block(&self, index: usize) -> Option<&DataBlock> {
         self.data_blocks.get(index)
     }
+
+    // Get the data type for the given channel.
+    ///
+    /// Returns None if the channel does not exist.
+    pub fn channel_type(&self, path: &ChannelPath) -> Option<&DataType> {
+        self.objects
+            .get(path.path())
+            .and_then(|object| {
+                object
+                    .latest_data_format
+                    .as_ref()
+                    .and_then(|format| match format {
+                        DataFormat::RawData(meta) => Some(&meta.data_type),
+                    })
+            })
+    }
+
 }
 
 #[cfg(test)]
