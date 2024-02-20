@@ -1,62 +1,10 @@
 mod common;
-use tedium::{ChannelPath, PropertyPath, PropertyValue, TdmsFile, TdmsStorageType};
-
-
-// Comment from the tedium author:
-//
-// So it should just adapt to the type of your array. There is a trait TdmsStorageType which is implemented for supported types for channels. So if you just use an array of f64 for example it will adapt to that.
-//
-// Now I can imagine how that could go wrong with defrag, if read is generic, and write is generic - it has to resolve to a type somewhere!
-// You almost want a copy_channel method which is generic and then above that check the type and call the right version.
-//
-// fn copy_channel_data<D: TdmsStorageType>(source, dest, channel) {
-//     generic_read(),
-//     generic_write()
-// }
-//
-// fn copy_channel(source, dest, channel) {
-//     let type = source.get_channel_type();
-//     match type {
-//         f64 => copy_channel_data::<f64>(source, dest, channel)
-//     }
-// }
-
-// let's implement the copy_channel_data method
-fn copy_channel_data<D: TdmsStorageType>(source: &mut TdmsFile<F>, dest: &mut TdmsFile<F>, channel: &ChannelPath) {
-    let channel_length = source.channel_length(channel).unwrap();
-    let mut data = vec![0.0; channel_length as usize];
-    source.read_channel(channel, &mut data).unwrap();
-    dest.write_channels(&[channel.clone()], &data, tedium::DataLayout::Interleaved).unwrap();
-}
-
-// let's implement the copy_channel method
-fn copy_channel(source: &mut TdmsFile<F>, dest: &mut TdmsFile<F>, channel: &ChannelPath) {
-    let channel_type = source.channel_type(channel).unwrap();
-    match channel_type {
-        TdmsStorageType::Double => copy_channel_data::<f64>(source, dest, channel),
-        TdmsStorageType::Single => copy_channel_data::<f32>(source, dest, channel),
-        TdmsStorageType::Int64 => copy_channel_data::<i64>(source, dest, channel),
-        TdmsStorageType::Int32 => copy_channel_data::<i32>(source, dest, channel),
-        TdmsStorageType::Int16 => copy_channel_data::<i16>(source, dest, channel),
-        TdmsStorageType::Int8 => copy_channel_data::<i8>(source, dest, channel),
-        TdmsStorageType::UInt64 => copy_channel_data::<u64>(source, dest, channel),
-        TdmsStorageType::UInt32 => copy_channel_data::<u32>(source, dest, channel),
-        TdmsStorageType::UInt16 => copy_channel_data::<u16>(source, dest, channel),
-        TdmsStorageType::UInt8 => copy_channel_data::<u8>(source, dest, channel),
-        TdmsStorageType::String => {
-            let channel_length = source.channel_length(channel).unwrap();
-            let mut data = vec![String::new(); channel_length as usize];
-            source.read_channel(channel, &mut data).unwrap();
-            dest.write_channels(&[channel.clone()], &data, tedium::DataLayout::Interleaved).unwrap();
-        }
-        TdmsStorageType::Boolean => {
-            let channel_length = source.channel_length(channel).unwrap();
-            let mut data = vec![false; channel_length as usize];
-            source.read_channel(channel, &mut data).unwrap();
-            dest.write_channels(&[channel.clone()], &data, tedium::DataLayout::Interleaved).unwrap();
-        }
-    }
-}
+use tedium::{ChannelPath, PropertyPath, PropertyValue, TdmsFile, DataType, TdmsFileWriter};
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
+};
 
 
 #[test]
@@ -91,6 +39,8 @@ fn test_defragment() {
     // Then iterate over the collected group names
     for group_path in groups {
 
+        println!("==== GROUP BEGIN =====");
+
         // print the group path
         println!("group_path: {:?}", group_path);
 
@@ -102,29 +52,87 @@ fn test_defragment() {
 
         for channel_path in channels {
 
+            println!("---- CHANNEL BEGIN ----");
+
             // print the channel path
             println!("channel_path: {:?}", channel_path);
+
+            // #todo: refactor this into a `copy_channel()` function
 
             let channel_length = input_file.channel_length(&channel_path).unwrap();
 
             // print the channel length
             println!("channel_length: {:?}", channel_length);
 
-            // create a buffer to hold the channel data, and read the channel data into it
-            let mut data = vec![0.0; channel_length as usize];
 
-            // Since we're no longer borrowing `input_file` to list groups/channels, this mutable borrow is okay
-            input_file.read_channel(&channel_path, &mut data).unwrap();
+            // print the channel type
+            let channel_type = input_file.get_channel_type(&channel_path);
+            match channel_type {
+                Some(t) => println!("channel_type: {:?}", t),
+                None => println!("channel_type: None"),
+            }
 
-            // print the data
-            println!("data: {:?}", data);
+            let channel_type = input_file.get_channel_type(&channel_path);
 
-            // // Write the channel data to the output file
-            // writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+            match channel_type {
 
-            // copy the channel data to the output file
-            copy_channel(&mut input_file, &mut output_file, &channel_path);
-        }
+                Some(DataType::SingleFloat) => {
+                    let mut data: Vec<f32> = vec![0.0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::DoubleFloat) => {
+                    let mut data: Vec<f64> = vec![0.0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::I8) => {
+                    let mut data: Vec<i8> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::I16) => {
+                    let mut data: Vec<i16> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::I32) => {
+                    let mut data: Vec<i32> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::I64) => {
+                    let mut data: Vec<i64> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::U8) => {
+                    let mut data: Vec<u8> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::U16) => {
+                    let mut data: Vec<u16> = vec![0; channel_length as usize];
+                },
+                Some(DataType::U32) => {
+                    let mut data: Vec<u32> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(DataType::U64) => {
+                    let mut data: Vec<u64> = vec![0; channel_length as usize];
+                    input_file.read_channel(&channel_path, &mut data).unwrap();
+                    writer.write_channels(&[channel_path], &data, tedium::DataLayout::Interleaved).unwrap();
+                },
+                Some(data_type) => println!("Unsupported data type: {}", data_type),
+                None => println!("None"),
+            }
+
+            println!("---- CHANNEL END ----");
+
+        };
+        println!("==== GROUP END =====");
     }
+
 
 }

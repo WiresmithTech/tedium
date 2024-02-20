@@ -151,8 +151,12 @@ impl<F: Read + Seek> TdmsFile<F> {
     }
 
     pub fn get_channel_type(&self, channel: &ChannelPath) -> Option<DataType> {
-        let data_type = *self.index.channel_type(channel).unwrap();
-        Some(data_type)
+        let data_type = self.index.channel_type(channel);
+        if let Some(data_type) = data_type {
+            Some(*data_type)
+        } else {
+            None
+        }
     }
 }
 
