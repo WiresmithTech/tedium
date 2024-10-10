@@ -15,6 +15,8 @@ pub use io::data_types::TdmsStorageType;
 pub use paths::{ChannelPath, PropertyPath};
 pub use properties::PropertyValue;
 pub use raw_data::DataLayout;
+/// So we can create analysis tools.
+pub use meta_data::Segment;
 
 // Put the types in their own namespace.
 pub mod types {

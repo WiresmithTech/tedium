@@ -5,3 +5,7 @@
 *.aliases
 *.lvlps
 *.tdms_index
+
+# ides
+.idea
+.vscode
