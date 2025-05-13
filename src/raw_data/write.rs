@@ -6,6 +6,7 @@ use crate::meta_data::RawDataMeta;
 // This is a circular reference - can we remove it?
 use crate::io::writer::TdmsWriter;
 use std::io::Write;
+use std::num::NonZeroUsize;
 
 /// Indicates a set of data that can be written as a binary block to a TDMS file.
 pub trait WriteBlock {
@@ -40,11 +41,11 @@ impl<D: TdmsStorageType> WriteBlock for &[D] {
 pub struct MultiChannelSlice<'a, D: TdmsStorageType>(&'a [D], usize);
 
 impl<'a, D: TdmsStorageType> MultiChannelSlice<'a, D> {
-    pub fn from_slice(slice: &'a [D], channel_count: usize) -> Result<Self, TdmsError> {
+    pub fn from_slice(slice: &'a [D], channel_count: NonZeroUsize) -> Result<Self, TdmsError> {
         if (slice.len() % channel_count) == 0 {
-            Ok(Self(slice, channel_count))
+            Ok(Self(slice, channel_count.get()))
         } else {
-            Err(TdmsError::BadDataBlockLength(slice.len(), channel_count))
+            Err(TdmsError::BadDataBlockLength(slice.len(), channel_count.get()))
         }
     }
 }
@@ -121,7 +122,7 @@ mod write_tests {
     #[test]
     fn multi_channel_writer_generates_meta_data() {
         let data = vec![0u32; 20];
-        let multi_channel = MultiChannelSlice::from_slice(&data[..], 4).unwrap();
+        let multi_channel = MultiChannelSlice::from_slice(&data[..], 4.try_into().unwrap()).unwrap();
         let meta = multi_channel.data_structure();
 
         // Although total size isi calculable this is only used for strings.
@@ -146,7 +147,7 @@ mod write_tests {
     #[test]
     fn multi_channel_writer_errors_bad_channel_length() {
         let data = vec![0u32; 20];
-        let multi_channel_result = MultiChannelSlice::from_slice(&data[..], 3);
+        let multi_channel_result = MultiChannelSlice::from_slice(&data[..], 3.try_into().unwrap());
         assert!(matches!(
             multi_channel_result,
             Err(TdmsError::BadDataBlockLength(20, 3))

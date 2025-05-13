@@ -37,4 +37,6 @@ pub enum TdmsError {
     InvalidObjectPath(String),
     #[error("Attempted to parse an valid but unsuitable path to a channel. {0}")]
     InvalidChannelPath(String),
+    #[error("Data blocks must have at least 1 channel")]
+    NoChannels,
 }

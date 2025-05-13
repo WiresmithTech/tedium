@@ -4,7 +4,7 @@ mod common;
 
 use common::get_empty_file;
 use tedium::types::Complex;
-use tedium::{ChannelPath, DataLayout};
+use tedium::{ChannelPath, DataLayout, TdmsError};
 
 #[test]
 fn test_multi_channel_write_interleaved() {
@@ -116,6 +116,14 @@ fn test_repeated_writes() {
 
     file.read_channel(&channel2, &mut buffer[..]).unwrap();
     assert_eq!(buffer, vec![4.0, 5.0, 6.0, 10.0, 11.0, 12.0]);
+}
+
+#[test]
+fn write_with_no_channels_error() {
+    let mut file = get_empty_file();
+    let mut writer = file.writer().unwrap();
+    let result = writer.write_channels::<u32, ChannelPath>(&[], &[], DataLayout::Contigious);
+    assert!(matches!(result, Err(TdmsError::NoChannels)));
 }
 
 macro_rules! write_datatype_test {

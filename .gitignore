@@ -5,3 +5,7 @@
 *.aliases
 *.lvlps
 *.tdms_index
+
+
+#jetbrains
+.idea

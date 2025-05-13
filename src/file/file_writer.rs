@@ -1,5 +1,5 @@
 use std::io::Write;
-
+use std::num::NonZeroUsize;
 use crate::error::TdmsError;
 use crate::index::{DataFormat, Index};
 use crate::io::data_types::TdmsStorageType;
@@ -36,13 +36,14 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
     /// If layout is [`DataLayout::Interleaved`] then the data is assumed to be interleaved. i.e. ch1, ch2, ch1, ch2
     ///
     /// If layout is [`DataLayout::Contigious`] then the data is assumed to be contigious. i.e. ch1, ch1, ch1, ch2, ch2, ch2
-    pub fn write_channels<D: TdmsStorageType>(
+    pub fn write_channels<D: TdmsStorageType, C: AsRef<ChannelPath>>(
         &mut self,
-        channels: &[impl AsRef<ChannelPath>],
+        channels: &[C],
         values: &[D],
         layout: DataLayout,
     ) -> Result<(), TdmsError> {
-        let raw_data = MultiChannelSlice::from_slice(values, channels.len())?;
+        let channel_count = NonZeroUsize::new(channels.len()).ok_or(TdmsError::NoChannels)?;
+        let raw_data = MultiChannelSlice::from_slice(values, channel_count)?;
         let data_structures = raw_data
             .data_structure()
             .into_iter()
