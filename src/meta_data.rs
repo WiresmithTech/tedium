@@ -222,7 +222,9 @@ impl TdmsMetaData for ObjectMetaData {
         let property_count: u32 = reader.read_value()?;
 
         let mut properties = Vec::new();
-        properties.try_reserve(property_count as usize).map_err(|_| TdmsError::PropertyTableAllocationFailed)?;
+        properties
+            .try_reserve(property_count as usize)
+            .map_err(|_| TdmsError::PropertyTableAllocationFailed)?;
 
         for _prop in 0..property_count {
             let name: String = reader.read_value()?;
@@ -447,8 +449,11 @@ mod tests {
         let mut cursor = Cursor::new(test_buffer);
         let mut reader = LittleEndianReader::from_reader(&mut cursor);
         let object_count: u32 = reader.read_value().unwrap();
-        let objects: Result<Vec<ObjectMetaData>,_> = reader.read_vec(object_count as usize);
-        assert!(matches!(objects, Err(TdmsError::PropertyTableAllocationFailed)));
+        let objects: Result<Vec<ObjectMetaData>, _> = reader.read_vec(object_count as usize);
+        assert!(matches!(
+            objects,
+            Err(TdmsError::PropertyTableAllocationFailed)
+        ));
     }
 
     #[test]
@@ -469,7 +474,10 @@ mod tests {
         let mut reader = LittleEndianReader::from_reader(&mut cursor);
         let object_count: u32 = reader.read_value().unwrap();
         let objects_result: Result<Vec<ObjectMetaData>, _> = reader.read_vec(object_count as usize);
-        assert!(matches!(objects_result, Err(TdmsError::VecAllocationFailed)));
+        assert!(matches!(
+            objects_result,
+            Err(TdmsError::VecAllocationFailed)
+        ));
     }
     /// Will write the value to an array and return it for comparison.
     ///

@@ -1,13 +1,15 @@
 //! Handling of string data types.
 
-use std::io::{Read, Write};
-use crate::{TdmsError, TdmsStorageType};
 use crate::io::data_types::StorageResult;
 use crate::types::DataType;
+use crate::{TdmsError, TdmsStorageType};
+use std::io::{Read, Write};
 
 fn read_string_with_length(reader: &mut impl Read, length: u32) -> Result<String, TdmsError> {
     let mut buffer = Vec::new();
-    buffer.try_reserve(length as usize).map_err(|_| TdmsError::StringAllocationFailed)?;
+    buffer
+        .try_reserve(length as usize)
+        .map_err(|_| TdmsError::StringAllocationFailed)?;
     // SAFETY: This is safe because:
     // 1. We just allocated capacity
     // 2. The memory will be immediately filled by read_exact
@@ -57,7 +59,7 @@ impl TdmsStorageType for String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_read_string() {
         let mut buffer = Vec::new();
@@ -68,7 +70,7 @@ mod tests {
         let value = String::read_le(&mut reader).unwrap();
         assert_eq!(value, hello);
     }
-    
+
     #[test]
     fn test_read_string_obscene_length() {
         let mut buffer = Vec::new();
