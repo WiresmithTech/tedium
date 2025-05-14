@@ -221,6 +221,9 @@ impl TdmsMetaData for ObjectMetaData {
 
         let property_count: u32 = reader.read_value()?;
 
+        // Initialize an empty vector and use try_reserve to handle potential allocation errors.
+        // This approach is chosen over Vec::with_capacity to explicitly handle cases where
+        // memory allocation might fail, ensuring robust error handling.
         let mut properties = Vec::new();
         properties
             .try_reserve(property_count as usize)
