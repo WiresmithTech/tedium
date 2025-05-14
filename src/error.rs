@@ -41,6 +41,8 @@ pub enum TdmsError {
     VecAllocationFailed,
     #[error("Memory allocation error for string. This is likely to be due to file corruption.")]
     StringAllocationFailed,
-    #[error("Memory allocation error for property table. This is likely to be due to file corruption.")]
+    #[error(
+        "Memory allocation error for property table. This is likely to be due to file corruption."
+    )]
     PropertyTableAllocationFailed,
 }

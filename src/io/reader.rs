@@ -15,7 +15,8 @@ pub trait TdmsReader<R: Read + Seek>: Sized {
     }
     fn read_vec<T: TdmsMetaData>(&mut self, length: usize) -> Result<Vec<T>, TdmsError> {
         let mut vec = Vec::new();
-        vec.try_reserve(length).map_err(|_|TdmsError::VecAllocationFailed)?;
+        vec.try_reserve(length)
+            .map_err(|_| TdmsError::VecAllocationFailed)?;
         for _ in 0..length {
             vec.push(self.read_meta()?);
         }
