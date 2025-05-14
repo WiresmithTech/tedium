@@ -6,6 +6,6 @@
 *.lvlps
 *.tdms_index
 
-
-#jetbrains
+# ides
 .idea
+.vscode

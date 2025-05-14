@@ -1,7 +1,7 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
 
-use std::io::{Read, Write};
+use std::io::{repeat, Read, Write};
 
 use super::*;
 
@@ -58,45 +58,6 @@ numeric_type!(
     DataType::SingleFloat,
     &[DataType::SingleFloat, DataType::SingleFloatWithUnit]
 );
-
-fn read_string_with_length(reader: &mut impl Read, length: u32) -> Result<String, TdmsError> {
-    let mut buffer = vec![0; length as usize];
-    reader.read_exact(&mut buffer[..])?;
-    let value = String::from_utf8(buffer)?;
-    Ok(value)
-}
-
-impl TdmsStorageType for String {
-    const SUPPORTED_TYPES: &'static [DataType] = &[DataType::TdmsString];
-
-    fn read_le(reader: &mut impl Read) -> Result<Self, TdmsError> {
-        let length = u32::read_le(reader)?;
-        read_string_with_length(reader, length)
-    }
-
-    fn read_be(reader: &mut impl Read) -> Result<Self, TdmsError> {
-        let length = u32::read_be(reader)?;
-        read_string_with_length(reader, length)
-    }
-
-    const NATURAL_TYPE: DataType = DataType::TdmsString;
-
-    fn write_le(&self, writer: &mut impl Write) -> StorageResult<()> {
-        writer.write_all(&(self.len() as u32).to_le_bytes())?;
-        writer.write_all(self.as_bytes())?;
-        Ok(())
-    }
-
-    fn write_be(&self, writer: &mut impl Write) -> StorageResult<()> {
-        writer.write_all(&(self.len() as u32).to_be_bytes())?;
-        writer.write_all(self.as_bytes())?;
-        Ok(())
-    }
-
-    fn size(&self) -> usize {
-        self.len() + std::mem::size_of::<u32>()
-    }
-}
 
 #[cfg(test)]
 mod tests {

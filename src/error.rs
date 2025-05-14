@@ -39,4 +39,12 @@ pub enum TdmsError {
     InvalidChannelPath(String),
     #[error("Data blocks must have at least 1 channel")]
     NoChannels,
+    #[error("Memory allocation error for vector. This is likely to be due to file corruption.")]
+    VecAllocationFailed,
+    #[error("Memory allocation error for string. This is likely to be due to file corruption.")]
+    StringAllocationFailed,
+    #[error(
+        "Memory allocation error for property table. This is likely to be due to file corruption."
+    )]
+    PropertyTableAllocationFailed,
 }

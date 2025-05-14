@@ -1,0 +1,21 @@
+[package]
+name = "tedium-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.tedium]
+path = ".."
+
+[[bin]]
+name = "file_from_bytes"
+path = "fuzz_targets/file_from_bytes.rs"
+test = false
+doc = false
+bench = false

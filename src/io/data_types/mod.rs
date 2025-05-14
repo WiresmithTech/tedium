@@ -15,6 +15,7 @@ mod bool;
 mod complex;
 mod extended;
 mod native_numerics;
+mod strings;
 mod timestamp;
 
 use std::fmt::Display;
