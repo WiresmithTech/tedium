@@ -221,7 +221,8 @@ impl TdmsMetaData for ObjectMetaData {
 
         let property_count: u32 = reader.read_value()?;
 
-        let mut properties = Vec::with_capacity(property_count as usize);
+        let mut properties = Vec::new();
+        properties.try_reserve(property_count as usize).map_err(|_| TdmsError::PropertyTableAllocationFailed)?;
 
         for _prop in 0..property_count {
             let name: String = reader.read_value()?;

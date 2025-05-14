@@ -14,8 +14,8 @@ libfuzzer-sys = "0.4"
 path = ".."
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "file_from_bytes"
+path = "fuzz_targets/file_from_bytes.rs"
 test = false
 doc = false
 bench = false

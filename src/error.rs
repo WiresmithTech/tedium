@@ -37,4 +37,10 @@ pub enum TdmsError {
     InvalidObjectPath(String),
     #[error("Attempted to parse an valid but unsuitable path to a channel. {0}")]
     InvalidChannelPath(String),
+    #[error("Memory allocation error for vector. This is likely to be due to file corruption.")]
+    VecAllocationFailed,
+    #[error("Memory allocation error for string. This is likely to be due to file corruption.")]
+    StringAllocationFailed,
+    #[error("Memory allocation error for property table. This is likely to be due to file corruption.")]
+    PropertyTableAllocationFailed,
 }

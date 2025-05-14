@@ -45,3 +45,11 @@ If you look through the library you will see some key modules:
 ## Criterion Benchmarks
 
 We use criterion benchmarks to monitor for possible performance improvements. These use memory buffers instead of files which means the numbers are not representative of real use but instead represent the maximum possible speed given the library and format overheads.
+
+## Fuzzing
+
+I'm attempting to use fuzzing to find further bugs.
+
+The working command right now is:
+
+`ASAN_OPTIONS=allocator_may_return_null=1:report_ooms=0 cargo fuzz run file_from_bytes -- -ignore_ooms=1 -rss_limit_mb=0`
