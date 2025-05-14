@@ -16,6 +16,7 @@ mod complex;
 mod extended;
 mod native_numerics;
 mod timestamp;
+mod strings;
 
 use std::fmt::Display;
 use std::io::{Read, Write};
