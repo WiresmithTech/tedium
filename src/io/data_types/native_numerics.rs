@@ -1,7 +1,7 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
 
-use std::io::{Read, Write};
+use std::io::{repeat, Read, Write};
 
 use super::*;
 
@@ -60,7 +60,9 @@ numeric_type!(
 );
 
 fn read_string_with_length(reader: &mut impl Read, length: u32) -> Result<String, TdmsError> {
-    let mut buffer = vec![0; length as usize];
+    let mut buffer = Vec::new();
+    buffer.try_reserve(length as usize).map_err(|_| TdmsError::StringAllocationFailed)?;
+    buffer.extend(std::iter::repeat(0).take(length as usize));
     reader.read_exact(&mut buffer[..])?;
     let value = String::from_utf8(buffer)?;
     Ok(value)
