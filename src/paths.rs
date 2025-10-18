@@ -22,7 +22,7 @@ fn escape_name(name: &str) -> String {
 /// - Ok(None, None): The path is the root of the file.
 /// - Ok(Some(group), None): The path is to a group.
 /// - Ok(Some(group), Some(channel)): The path is to a channel.
-fn parse_path(path: ObjectPath) -> Result<(Option<&str>, Option<&str>), TdmsError> {
+fn parse_path(path: ObjectPath<'_>) -> Result<(Option<&str>, Option<&str>), TdmsError> {
     //Simple filter.
     if !path.starts_with('/') {
         return Err(TdmsError::InvalidObjectPath(path.to_string()));
@@ -58,7 +58,7 @@ fn parse_name(name: &str) -> Option<&str> {
 }
 
 /// Get the group name for the path, if one exists.
-pub fn path_group_name(path: ObjectPath) -> Option<&str> {
+pub fn path_group_name(path: ObjectPath<'_>) -> Option<&str> {
     parse_path(path).ok()?.0
 }
 
@@ -112,7 +112,7 @@ impl PropertyPath {
     }
 
     /// Get the path in the internal format.
-    pub fn path(&self) -> ObjectPath {
+    pub fn path(&self) -> ObjectPath<'_> {
         self.0.as_ref()
     }
 
@@ -166,7 +166,7 @@ pub struct ChannelPath(PropertyPath);
 
 impl ChannelPath {
     /// Get the path in the internal format.
-    pub fn path(&self) -> ObjectPath {
+    pub fn path(&self) -> ObjectPath<'_> {
         self.0.path()
     }
 

@@ -1,7 +1,7 @@
 //! This contains the code and structure for some of the fundamental
 //! data types common to other components.
 
-use std::io::{repeat, Read, Write};
+use std::io::{Read, Write};
 
 use super::*;
 

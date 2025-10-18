@@ -46,6 +46,7 @@ impl TdmsFile<File> {
         let file = File::options()
             .write(true)
             .create(true)
+            .truncate(true)
             .read(true)
             .open(path)?;
         Self::new(file)
@@ -175,7 +176,9 @@ impl<F: Write + Read + Seek> TdmsFile<F> {
     /// drop(writer);
     ///
     /// file.read_channel(&ChannelPath::new("group", "channel"), &mut [0.0f64; 3]).unwrap();
-    pub fn writer(&mut self) -> Result<TdmsFileWriter<F, LittleEndianWriter<&mut F>>, TdmsError> {
+    pub fn writer(
+        &mut self,
+    ) -> Result<TdmsFileWriter<'_, F, LittleEndianWriter<&mut F>>, TdmsError> {
         //make sure we are at the end.
         self.file.seek(SeekFrom::End(0))?;
         Ok(TdmsFileWriter::new(

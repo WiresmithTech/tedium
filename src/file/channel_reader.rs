@@ -216,10 +216,7 @@ fn read_plan(channel_positions: &[&[DataLocation]]) -> Vec<MultiChannelLocation>
             .iter()
             .zip(next_location.iter_mut())
             .map(|(locations, index)| {
-                let next_location = locations.get(*index);
-                let Some(next_location) = next_location else {
-                    return None;
-                };
+                let next_location = locations.get(*index)?;
 
                 if next_location.data_block == next_block {
                     *index += 1;

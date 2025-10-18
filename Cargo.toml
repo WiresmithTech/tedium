@@ -12,14 +12,14 @@ readme = ".\\README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-num-traits = "*"
-num-derive = "*"
-thiserror = "1"
+num-traits = "0.2"
+num-derive = "0.4"
+thiserror = "2"
 paste = "1.0"
-labview-interop = "0.2"
+labview-interop = "0.4"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.7"
 
 [[bench]]
 name = "tedium_benchmark"

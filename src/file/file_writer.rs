@@ -1,5 +1,3 @@
-use std::io::Write;
-use std::num::NonZeroUsize;
 use crate::error::TdmsError;
 use crate::index::{DataFormat, Index};
 use crate::io::data_types::TdmsStorageType;
@@ -8,6 +6,8 @@ use crate::meta_data::{MetaData, ObjectMetaData, ToC};
 use crate::paths::ChannelPath;
 use crate::raw_data::{MultiChannelSlice, WriteBlock};
 use crate::{DataLayout, PropertyPath, PropertyValue};
+use std::io::Write;
+use std::num::NonZeroUsize;
 
 pub struct TdmsFileWriter<'a, F: Write + 'a, W: TdmsWriter<&'a mut F>> {
     index: &'a mut Index,

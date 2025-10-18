@@ -45,7 +45,10 @@ impl<'a, D: TdmsStorageType> MultiChannelSlice<'a, D> {
         if (slice.len() % channel_count) == 0 {
             Ok(Self(slice, channel_count.get()))
         } else {
-            Err(TdmsError::BadDataBlockLength(slice.len(), channel_count.get()))
+            Err(TdmsError::BadDataBlockLength(
+                slice.len(),
+                channel_count.get(),
+            ))
         }
     }
 }
@@ -55,7 +58,7 @@ impl<'a, D: TdmsStorageType> WriteBlock for MultiChannelSlice<'a, D> {
         let basic_meta = self
             .0
             .data_structure()
-            .get(0)
+            .first()
             .expect("Should always/only have 1 entry")
             .clone();
 
@@ -122,7 +125,8 @@ mod write_tests {
     #[test]
     fn multi_channel_writer_generates_meta_data() {
         let data = vec![0u32; 20];
-        let multi_channel = MultiChannelSlice::from_slice(&data[..], 4.try_into().unwrap()).unwrap();
+        let multi_channel =
+            MultiChannelSlice::from_slice(&data[..], 4.try_into().unwrap()).unwrap();
         let meta = multi_channel.data_structure();
 
         // Although total size isi calculable this is only used for strings.

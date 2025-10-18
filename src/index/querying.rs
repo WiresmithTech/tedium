@@ -15,17 +15,17 @@ use crate::paths::ObjectPath;
 /// as that isn't a concept in the index.
 impl Index {
     /// Get all of the objects stored in the index.
-    pub fn all_paths(&self) -> impl Iterator<Item = ObjectPath> {
+    pub fn all_paths(&self) -> impl Iterator<Item = ObjectPath<'_>> {
         self.objects.keys().map(|path| path.as_str())
     }
 
     /// Get all of the objects that start with the given path.
     ///
-    /// This is seperated as we may be able to use techiques in the index to speed this up.
-    pub fn paths_starting_with<'a: 'b, 'b>(
+    /// This is seperated as we may be able to use techniques in the index to speed this up.
+    pub fn paths_starting_with<'a>(
         &'a self,
-        path: ObjectPath<'b>,
-    ) -> impl Iterator<Item = ObjectPath> + 'b {
+        path: ObjectPath<'a>,
+    ) -> impl Iterator<Item = ObjectPath<'a>> + 'a {
         // Since we use a BTree we can use ranges of strings to filter the interesting paths.
         // Lower range is our prefix.
         // An upper range is the prefix but with the last character incremented. This isn't trivial so we have
