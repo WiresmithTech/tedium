@@ -90,7 +90,7 @@ impl super::Index {
             let data_block =
                 DataBlock::from_segment(&segment, self.next_segment_start, active_data_channels);
 
-            self.insert_data_block(data_block);
+            self.insert_data_block(data_block?);
         }
 
         let segment_size = segment.total_size_bytes()?;
@@ -441,7 +441,7 @@ mod tests {
 
         let expected_data_block = DataBlock {
             start: 48,
-            length: 480,
+            length: 480.try_into().unwrap(),
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
@@ -522,7 +522,7 @@ mod tests {
 
         let expected_data_block = DataBlock {
             start: 576,
-            length: 480,
+            length: 480.try_into().unwrap(),
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
@@ -603,7 +603,7 @@ mod tests {
 
         let expected_data_block = DataBlock {
             start: 576,
-            length: 480,
+            length: 480.try_into().unwrap(),
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {

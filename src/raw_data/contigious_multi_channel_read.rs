@@ -2,14 +2,14 @@
 //!
 //!
 
+use super::records::{RecordEntryPlan, RecordStructure};
 use crate::io::reader::TdmsReader;
 use crate::{error::TdmsError, io::data_types::TdmsStorageType};
+use std::num::NonZeroU64;
 use std::{
     io::{Read, Seek},
     marker::PhantomData,
 };
-
-use super::records::{RecordEntryPlan, RecordStructure};
 
 /// The multichannel contigious reader will read from an contigous block.
 ///
@@ -17,12 +17,12 @@ use super::records::{RecordEntryPlan, RecordStructure};
 pub struct MultiChannelContigousReader<R: Read + Seek, T: TdmsReader<R>> {
     reader: T,
     _marker: PhantomData<R>,
-    block_size: u64,
+    block_size: NonZeroU64,
     block_start: u64,
 }
 
 impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
-    pub fn new(reader: T, block_start: u64, block_size: u64) -> Self {
+    pub fn new(reader: T, block_start: u64, block_size: NonZeroU64) -> Self {
         Self {
             reader,
             _marker: PhantomData,
@@ -43,7 +43,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
     ) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
 
-        let total_sub_blocks = self.block_size / channels.block_size() as u64;
+        let total_sub_blocks = self.block_size.get() / channels.block_size() as u64;
 
         let mut length = 0;
 
@@ -121,7 +121,7 @@ mod tests {
         let mut reader = MultiChannelContigousReader::<_, _>::new(
             BigEndianReader::from_reader(&mut buffer),
             0,
-            800,
+            800.try_into().unwrap(),
         );
         let mut output: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output[..])];
@@ -140,7 +140,7 @@ mod tests {
         let mut reader = MultiChannelContigousReader::<_, _>::new(
             BigEndianReader::from_reader(&mut buffer),
             0,
-            800,
+            800.try_into().unwrap(),
         );
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
@@ -176,7 +176,7 @@ mod tests {
         let mut reader = MultiChannelContigousReader::<_, _>::new(
             BigEndianReader::from_reader(&mut buffer),
             0,
-            800,
+            800.try_into().unwrap(),
         );
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
@@ -198,7 +198,7 @@ mod tests {
         let mut reader = MultiChannelContigousReader::<_, _>::new(
             BigEndianReader::from_reader(&mut buffer),
             0,
-            800,
+            800.try_into().unwrap(),
         );
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 2];

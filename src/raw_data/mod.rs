@@ -10,11 +10,6 @@ mod write;
 use records::RecordStructure;
 pub use write::{MultiChannelSlice, WriteBlock};
 
-use std::{
-    io::{Read, Seek},
-    ops::AddAssign,
-};
-
 use crate::{
     error::TdmsError,
     io::{
@@ -22,6 +17,11 @@ use crate::{
         reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     },
     meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
+};
+use std::num::NonZeroU64;
+use std::{
+    io::{Read, Seek},
+    ops::AddAssign,
 };
 
 use self::{
@@ -82,7 +82,7 @@ impl AddAssign for ChunkSize {
 pub struct DataBlock {
     pub start: u64,
     ///Length allows detection where an existing segment is just extended.
-    pub length: u64,
+    pub length: NonZeroU64,
     pub layout: DataLayout,
     pub channels: Vec<RawDataMeta>,
     pub byte_order: Endianess,
@@ -97,7 +97,7 @@ impl DataBlock {
         segment: &Segment,
         segment_start: u64,
         active_channels_meta: Vec<RawDataMeta>,
-    ) -> Self {
+    ) -> Result<Self, TdmsError> {
         let byte_order = if segment.toc.big_endian {
             Endianess::Big
         } else {
@@ -109,14 +109,19 @@ impl DataBlock {
         } else {
             DataLayout::Contigious
         };
+        let length = NonZeroU64::new(segment.next_segment_offset - segment.raw_data_offset)
+            .ok_or(TdmsError::ZeroLengthDataBlock)?;
+        if active_channels_meta.is_empty() {
+            return Err(TdmsError::NoActiveChannelsInDataBlock);
+        }
 
-        DataBlock {
+        Ok(DataBlock {
             start: segment.raw_data_offset + LEAD_IN_BYTES + segment_start,
-            length: segment.next_segment_offset - segment.raw_data_offset,
+            length,
             layout,
             channels: active_channels_meta,
             byte_order,
-        }
+        })
     }
 
     /// Calculate the expected size of a single data chunk.
@@ -139,12 +144,13 @@ impl DataBlock {
     }
 
     ///Calculate the number of data chunks written to this data block.
-    /// This is th number of repeated writes that have occured without new metadata.
+    /// This is the number of repeated writes that have occurred without new metadata.
     pub fn number_of_chunks(&self) -> usize {
         let size = self.chunk_size();
 
         match size {
-            ChunkSize::Fixed(size) => (self.length / size) as usize,
+            ChunkSize::Fixed(0) => 0,
+            ChunkSize::Fixed(size) => (self.length.get() / size) as usize,
             ChunkSize::Variable(_) => 1,
         }
     }
@@ -278,11 +284,11 @@ mod read_tests {
 
         let raw_meta = raw_meta_from_segment(&segment);
 
-        let data_block = DataBlock::from_segment(&segment, 10, raw_meta);
+        let data_block = DataBlock::from_segment(&segment, 10, raw_meta).unwrap();
 
         let expected_data_block = DataBlock {
             start: 58,
-            length: 480,
+            length: 480.try_into().unwrap(),
             layout: DataLayout::Contigious,
             channels: vec![
                 RawDataMeta {
@@ -303,6 +309,29 @@ mod read_tests {
     }
 
     #[test]
+    fn data_block_errors_if_no_channels() {
+        let segment = dummy_segment();
+        let data_result = DataBlock::from_segment(&segment, 0, vec![]);
+        assert!(data_result.is_err());
+    }
+
+    #[test]
+    fn data_block_errors_if_length_is_zero() {
+        let mut segment = dummy_segment();
+        segment.raw_data_offset = segment.next_segment_offset;
+        let data_result = DataBlock::from_segment(
+            &segment,
+            0,
+            vec![RawDataMeta {
+                data_type: DataType::DoubleFloat,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            }],
+        );
+        assert!(data_result.is_err());
+    }
+
+    #[test]
     fn data_block_gets_layout_from_segment() {
         let mut interleaved = dummy_segment();
         interleaved.toc.data_is_interleaved = true;
@@ -310,8 +339,14 @@ mod read_tests {
         let mut contiguous = dummy_segment();
         contiguous.toc.data_is_interleaved = false;
 
-        let interleaved_block = DataBlock::from_segment(&interleaved, 0, vec![]);
-        let contiguous_block = DataBlock::from_segment(&contiguous, 0, vec![]);
+        let channels = vec![RawDataMeta {
+            data_type: DataType::DoubleFloat,
+            number_of_values: 1000,
+            total_size_bytes: None,
+        }];
+
+        let interleaved_block = DataBlock::from_segment(&interleaved, 0, channels.clone()).unwrap();
+        let contiguous_block = DataBlock::from_segment(&contiguous, 0, channels).unwrap();
 
         assert_eq!(interleaved_block.layout, DataLayout::Interleaved);
         assert_eq!(contiguous_block.layout, DataLayout::Contigious);
@@ -325,8 +360,14 @@ mod read_tests {
         let mut little = dummy_segment();
         little.toc.big_endian = false;
 
-        let big_block = DataBlock::from_segment(&big, 0, vec![]);
-        let little_block = DataBlock::from_segment(&little, 0, vec![]);
+        let channels = vec![RawDataMeta {
+            data_type: DataType::DoubleFloat,
+            number_of_values: 1000,
+            total_size_bytes: None,
+        }];
+
+        let big_block = DataBlock::from_segment(&big, 0, channels.clone()).unwrap();
+        let little_block = DataBlock::from_segment(&little, 0, channels).unwrap();
 
         assert_eq!(big_block.byte_order, Endianess::Big);
         assert_eq!(little_block.byte_order, Endianess::Little);
@@ -336,7 +377,7 @@ mod read_tests {
     fn data_block_get_chunk_size_single_type() {
         let segment = dummy_segment();
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         // 2 ch * 1000 samples * 8 bytes per sample
         assert_eq!(block.chunk_size(), ChunkSize::Fixed(16000));
     }
@@ -352,7 +393,7 @@ mod read_tests {
             });
         }
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         // (4 byte + 8 byte) * 1000 samples
         assert_eq!(block.chunk_size(), ChunkSize::Fixed(12000));
     }
@@ -368,7 +409,7 @@ mod read_tests {
             });
         }
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         // 8 byte * 1000 + the string 12000
         assert_eq!(block.chunk_size(), ChunkSize::Variable(20000));
     }
@@ -378,8 +419,20 @@ mod read_tests {
         let mut segment = dummy_segment();
         segment.next_segment_offset = segment.raw_data_offset + 16000;
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         assert_eq!(block.number_of_chunks(), 1);
+    }
+
+    #[test]
+    fn data_block_chunk_count_empty_channels() {
+        let mut segment = dummy_segment();
+        segment.next_segment_offset = segment.raw_data_offset + 16000;
+        let mut channels = raw_meta_from_segment(&segment);
+        for channel in &mut channels {
+            channel.number_of_values = 0;
+        }
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
+        assert_eq!(block.number_of_chunks(), 0);
     }
 
     #[test]
@@ -387,7 +440,7 @@ mod read_tests {
         let mut segment = dummy_segment();
         segment.next_segment_offset = segment.raw_data_offset + (3 * 16000);
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         assert_eq!(block.number_of_chunks(), 3);
     }
 
@@ -397,7 +450,7 @@ mod read_tests {
         let mut segment = dummy_segment();
         segment.next_segment_offset = segment.raw_data_offset + (3 * 16000) + 300;
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         assert_eq!(block.number_of_chunks(), 3);
     }
 
@@ -413,7 +466,7 @@ mod read_tests {
             });
         }
         let channels = raw_meta_from_segment(&segment);
-        let block = DataBlock::from_segment(&segment, 0, channels);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         assert_eq!(block.number_of_chunks(), 1);
     }
 }

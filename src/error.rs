@@ -47,4 +47,8 @@ pub enum TdmsError {
         "Memory allocation error for property table. This is likely to be due to file corruption."
     )]
     PropertyTableAllocationFailed,
+    #[error("A data block has a lenght of zero. The file is likely to be corrupted.")]
+    ZeroLengthDataBlock,
+    #[error("A data block has no active channels. The file is likely to be corrupted.")]
+    NoActiveChannelsInDataBlock,
 }
