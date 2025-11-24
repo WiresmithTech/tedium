@@ -53,4 +53,8 @@ pub enum TdmsError {
     NoActiveChannelsInDataBlock,
     #[error("The data block wants to use the same data type as previous, but no previous type is available.")]
     NoPreviousType,
+    #[error("The raw data offset is greater than the next segment offset which is an invalid condition. The file is likely corrupt")]
+    InvalidRawOffset,
+    #[error("The calculated size for a data chunk is grater than 2^64 bytes. This isn't allowed and probably indicates a corrupt file.")]
+    ChunkSizeOverflow,
 }

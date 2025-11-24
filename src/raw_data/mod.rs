@@ -10,6 +10,10 @@ mod write;
 use records::RecordStructure;
 pub use write::{MultiChannelSlice, WriteBlock};
 
+use self::{
+    contigious_multi_channel_read::MultiChannelContigousReader,
+    interleaved_multi_channel_read::MultiChannelInterleavedReader,
+};
 use crate::{
     error::TdmsError,
     io::{
@@ -18,16 +22,8 @@ use crate::{
     },
     meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
 };
+use std::io::{Read, Seek};
 use std::num::NonZeroU64;
-use std::{
-    io::{Read, Seek},
-    ops::AddAssign,
-};
-
-use self::{
-    contigious_multi_channel_read::MultiChannelContigousReader,
-    interleaved_multi_channel_read::MultiChannelInterleavedReader,
-};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DataLayout {
@@ -62,18 +58,39 @@ pub enum ChunkSize {
 /// Implement an addition for chunk size.
 ///
 /// The sizes always add together, but a variable input always produces a variable output.
-impl AddAssign for ChunkSize {
-    fn add_assign(&mut self, rhs: Self) {
+///
+/// The result indicates an overflow condition.
+impl ChunkSize {
+    fn combine(&mut self, rhs: Self) -> Result<(), TdmsError> {
         match rhs {
             ChunkSize::Fixed(size) => match self {
-                ChunkSize::Fixed(existing) => *existing += size,
-                ChunkSize::Variable(existing) => *existing += size,
+                ChunkSize::Fixed(existing) => {
+                    *existing = existing
+                        .checked_add(size)
+                        .ok_or(TdmsError::ChunkSizeOverflow)?
+                }
+                ChunkSize::Variable(existing) => {
+                    *existing = existing
+                        .checked_add(size)
+                        .ok_or(TdmsError::ChunkSizeOverflow)?
+                }
             },
             ChunkSize::Variable(size) => match self {
-                ChunkSize::Fixed(existing) => *self = ChunkSize::Variable(*existing + size),
-                ChunkSize::Variable(existing) => *existing += size,
+                ChunkSize::Fixed(existing) => {
+                    *self = ChunkSize::Variable(
+                        existing
+                            .checked_add(size)
+                            .ok_or(TdmsError::ChunkSizeOverflow)?,
+                    )
+                }
+                ChunkSize::Variable(existing) => {
+                    *existing = existing
+                        .checked_add(size)
+                        .ok_or(TdmsError::ChunkSizeOverflow)?
+                }
             },
         }
+        Ok(())
     }
 }
 
@@ -109,6 +126,9 @@ impl DataBlock {
         } else {
             DataLayout::Contigious
         };
+        if segment.raw_data_offset > segment.next_segment_offset {
+            return Err(TdmsError::InvalidRawOffset);
+        }
         let length = NonZeroU64::new(segment.next_segment_offset - segment.raw_data_offset)
             .ok_or(TdmsError::ZeroLengthDataBlock)?;
         if active_channels_meta.is_empty() {
@@ -127,32 +147,36 @@ impl DataBlock {
     /// Calculate the expected size of a single data chunk.
     ///
     /// A data chunk is the raw data written in a single write to the file and described in the header.
-    pub fn chunk_size(&self) -> ChunkSize {
+    pub fn chunk_size(&self) -> Result<ChunkSize, TdmsError> {
         let mut size = ChunkSize::Fixed(0);
         for channel in &self.channels {
             match channel.total_size_bytes {
                 Some(total_size) => {
-                    size += ChunkSize::Variable(total_size);
+                    size.combine(ChunkSize::Variable(total_size))?;
                 }
                 None => {
-                    size +=
-                        ChunkSize::Fixed(channel.number_of_values * channel.data_type.size() as u64)
+                    let values = channel
+                        .number_of_values
+                        .checked_mul(channel.data_type.size() as u64)
+                        .ok_or(TdmsError::ChunkSizeOverflow)?;
+                    size.combine(ChunkSize::Fixed(values))?;
                 }
             }
         }
-        size
+        Ok(size)
     }
 
     ///Calculate the number of data chunks written to this data block.
     /// This is the number of repeated writes that have occurred without new metadata.
-    pub fn number_of_chunks(&self) -> usize {
-        let size = self.chunk_size();
+    pub fn number_of_chunks(&self) -> Result<usize, TdmsError> {
+        let size = self.chunk_size()?;
 
-        match size {
+        let chunk_count = match size {
             ChunkSize::Fixed(0) => 0,
             ChunkSize::Fixed(size) => (self.length.get() / size) as usize,
             ChunkSize::Variable(_) => 1,
-        }
+        };
+        Ok(chunk_count)
     }
 
     /// Read the data from the block for the channels specified into the output slices.
@@ -332,6 +356,22 @@ mod read_tests {
     }
 
     #[test]
+    fn data_block_errors_if_raw_offset_is_greater_than_length() {
+        let mut segment = dummy_segment();
+        segment.raw_data_offset = segment.next_segment_offset + 1;
+        let data_result = DataBlock::from_segment(
+            &segment,
+            0,
+            vec![RawDataMeta {
+                data_type: DataType::DoubleFloat,
+                number_of_values: 1000,
+                total_size_bytes: None,
+            }],
+        );
+        assert!(data_result.is_err());
+    }
+
+    #[test]
     fn data_block_gets_layout_from_segment() {
         let mut interleaved = dummy_segment();
         interleaved.toc.data_is_interleaved = true;
@@ -379,7 +419,16 @@ mod read_tests {
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         // 2 ch * 1000 samples * 8 bytes per sample
-        assert_eq!(block.chunk_size(), ChunkSize::Fixed(16000));
+        assert_eq!(block.chunk_size().unwrap(), ChunkSize::Fixed(16000));
+    }
+    #[test]
+    fn data_block_get_chunk_size_single_type_overflow() {
+        let segment = dummy_segment();
+        let mut channels = raw_meta_from_segment(&segment);
+        channels[0].number_of_values = u64::MAX;
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
+        // 2 ch * 1000 samples * 8 bytes per sample
+        assert!(block.chunk_size().is_err());
     }
 
     #[test]
@@ -395,7 +444,7 @@ mod read_tests {
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         // (4 byte + 8 byte) * 1000 samples
-        assert_eq!(block.chunk_size(), ChunkSize::Fixed(12000));
+        assert_eq!(block.chunk_size().unwrap(), ChunkSize::Fixed(12000));
     }
 
     #[test]
@@ -411,7 +460,22 @@ mod read_tests {
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
         // 8 byte * 1000 + the string 12000
-        assert_eq!(block.chunk_size(), ChunkSize::Variable(20000));
+        assert_eq!(block.chunk_size().unwrap(), ChunkSize::Variable(20000));
+    }
+    #[test]
+    fn data_block_get_chunk_size_string_overflow() {
+        let mut segment = dummy_segment();
+        if let Some(metadata) = segment.meta_data.as_mut() {
+            metadata.objects[1].raw_data_index = RawDataIndex::RawData(RawDataMeta {
+                data_type: DataType::TdmsString,
+                number_of_values: 1000,
+                total_size_bytes: Some(u64::MAX),
+            });
+        }
+        let channels = raw_meta_from_segment(&segment);
+        let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
+        // 8 byte * 1000 + the string 12000
+        assert!(block.chunk_size().is_err());
     }
 
     #[test]
@@ -420,7 +484,7 @@ mod read_tests {
         segment.next_segment_offset = segment.raw_data_offset + 16000;
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
-        assert_eq!(block.number_of_chunks(), 1);
+        assert_eq!(block.number_of_chunks().unwrap(), 1);
     }
 
     #[test]
@@ -432,7 +496,7 @@ mod read_tests {
             channel.number_of_values = 0;
         }
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
-        assert_eq!(block.number_of_chunks(), 0);
+        assert_eq!(block.number_of_chunks().unwrap(), 0);
     }
 
     #[test]
@@ -441,7 +505,7 @@ mod read_tests {
         segment.next_segment_offset = segment.raw_data_offset + (3 * 16000);
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
-        assert_eq!(block.number_of_chunks(), 3);
+        assert_eq!(block.number_of_chunks().unwrap(), 3);
     }
 
     // This case should probably not occur, but lets do something sensible incase.
@@ -451,7 +515,7 @@ mod read_tests {
         segment.next_segment_offset = segment.raw_data_offset + (3 * 16000) + 300;
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
-        assert_eq!(block.number_of_chunks(), 3);
+        assert_eq!(block.number_of_chunks().unwrap(), 3);
     }
 
     #[test]
@@ -467,6 +531,6 @@ mod read_tests {
         }
         let channels = raw_meta_from_segment(&segment);
         let block = DataBlock::from_segment(&segment, 0, channels).unwrap();
-        assert_eq!(block.number_of_chunks(), 1);
+        assert_eq!(block.number_of_chunks().unwrap(), 1);
     }
 }

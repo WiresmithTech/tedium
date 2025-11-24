@@ -87,9 +87,9 @@ impl super::Index {
             }
 
             let data_block =
-                DataBlock::from_segment(&segment, self.next_segment_start, active_data_channels);
+                DataBlock::from_segment(&segment, self.next_segment_start, active_data_channels)?;
 
-            self.insert_data_block(data_block?);
+            self.insert_data_block(data_block)?;
         }
 
         let segment_size = segment.total_size_bytes()?;
@@ -116,16 +116,19 @@ impl super::Index {
             .collect()
     }
 
-    fn insert_data_block(&mut self, block: DataBlock) {
+    fn insert_data_block(&mut self, block: DataBlock) -> Result<(), TdmsError> {
         let data_index = self.data_blocks.len();
 
         // get counts from block.
-        let chunks = block.number_of_chunks();
+        let chunks = block.number_of_chunks()?;
 
         self.data_blocks.push(block);
 
         for (channel_index, active_object) in self.active_objects.iter_mut().enumerate() {
-            let number_of_samples = active_object.number_of_samples * chunks as u64;
+            let number_of_samples = active_object
+                .number_of_samples
+                .checked_mul(chunks as u64)
+                .ok_or(TdmsError::ChunkSizeOverflow)?;
             let location = DataLocation {
                 data_block: data_index,
                 channel_index,
@@ -135,6 +138,7 @@ impl super::Index {
                 .get_object_data_mut(&mut self.objects)
                 .add_data_location(location);
         }
+        Ok(())
     }
 
     /// Consumes the object and makes it inactive.
