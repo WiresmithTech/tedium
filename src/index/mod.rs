@@ -63,7 +63,7 @@ struct ObjectData {
 
 impl ObjectData {
     /// Create the object data from the file metadata.
-    fn from_metadata(meta: &ObjectMetaData) -> Self {
+    fn from_metadata(meta: &ObjectMetaData) -> Result<Self, TdmsError> {
         let mut new = Self {
             path: meta.path.clone(),
             properties: BTreeMap::new(),
@@ -71,15 +71,15 @@ impl ObjectData {
             latest_data_format: None,
         };
 
-        new.update(meta);
+        new.update(meta)?;
 
-        new
+        Ok(new)
     }
 
     /// Update the object data from a new metadata object.
     ///
     /// For example update new properties.
-    fn update(&mut self, other: &ObjectMetaData) {
+    fn update(&mut self, other: &ObjectMetaData) -> Result<(), TdmsError> {
         for (name, value) in other.properties.iter() {
             self.properties.insert(name.clone(), value.clone());
         }
@@ -88,8 +88,14 @@ impl ObjectData {
         // If we have a format we should save it.
         // If it matches previous, we just shouldn't update it.
         // If none, do nothing.
-        if let Some(format) = DataFormat::from_index(&other.raw_data_index) {
-            self.latest_data_format = Some(format)
+        match (&mut self.latest_data_format, &other.raw_data_index) {
+            (None, RawDataIndex::MatchPrevious) => Err(TdmsError::NoPreviousType),
+            (latest_format, raw_index) => {
+                if let Some(format) = DataFormat::from_index(raw_index) {
+                    *latest_format = Some(format);
+                }
+                Ok(())
+            }
         }
     }
 

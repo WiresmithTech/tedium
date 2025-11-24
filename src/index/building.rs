@@ -71,13 +71,12 @@ impl super::Index {
         }
 
         if let Some(meta_data) = &segment.meta_data {
-            meta_data
-                .objects
-                .iter()
-                .for_each(|obj| match obj.raw_data_index {
-                    RawDataIndex::None => self.update_meta_object(obj),
-                    _ => self.update_or_activate_data_object(obj),
-                });
+            for obj in meta_data.objects.iter() {
+                match obj.raw_data_index {
+                    RawDataIndex::None => self.update_meta_object(obj)?,
+                    _ => self.update_or_activate_data_object(obj)?,
+                }
+            }
         }
 
         if segment.toc.contains_raw_data {
@@ -148,7 +147,7 @@ impl super::Index {
     /// Activate Data Object
     ///
     /// Adds the object by path to the active objects. Creates it if it doesn't exist.
-    fn update_or_activate_data_object(&mut self, object: &ObjectMetaData) {
+    fn update_or_activate_data_object(&mut self, object: &ObjectMetaData) -> Result<(), TdmsError> {
         let matching_active = self
             .active_objects
             .iter_mut()
@@ -159,10 +158,10 @@ impl super::Index {
                 active_object.update(object);
                 active_object
                     .get_object_data_mut(&mut self.objects)
-                    .update(object);
+                    .update(object)
             }
             None => {
-                self.update_meta_object(object);
+                self.update_meta_object(object)?;
                 // Must fetch the latest format in case this is same as previous.
                 let format = self
                     .channel_format(&object.path)
@@ -170,6 +169,7 @@ impl super::Index {
 
                 self.active_objects
                     .push(ActiveObject::new(&object.path, format));
+                Ok(())
             }
         }
     }
@@ -177,16 +177,17 @@ impl super::Index {
     /// Update Meta Only Object
     ///
     /// Update an object which contains no data.
-    fn update_meta_object(&mut self, object: &ObjectMetaData) {
+    fn update_meta_object(&mut self, object: &ObjectMetaData) -> Result<(), TdmsError> {
         match self.objects.get_mut(&object.path) {
             Some(found_object) => found_object.update(object),
             None => {
-                let object_data = ObjectData::from_metadata(object);
+                let object_data = ObjectData::from_metadata(object)?;
                 let old = self.objects.insert(object_data.path.clone(), object_data);
                 assert!(
                     old.is_none(),
                     "Should not be possible to be replacing an existing object."
                 );
+                Ok(())
             }
         }
     }
@@ -622,6 +623,32 @@ mod tests {
 
         let block = index.get_data_block(1).unwrap();
         assert_eq!(block, &expected_data_block);
+    }
+
+    #[test]
+    fn errors_if_no_previous_datatype_is_found() {
+        let segment = Segment {
+            toc: ToC::from_u32(0xE),
+            next_segment_offset: 500,
+            raw_data_offset: 20,
+            meta_data: Some(MetaData {
+                objects: vec![
+                    ObjectMetaData {
+                        path: "/'group'/'ch1'".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                    ObjectMetaData {
+                        path: "/'group'/'ch2'".to_string(),
+                        properties: vec![],
+                        raw_data_index: RawDataIndex::MatchPrevious,
+                    },
+                ],
+            }),
+        };
+        let mut index = Index::new();
+        let result = index.add_segment(segment);
+        assert!(result.is_err());
     }
 
     #[test]

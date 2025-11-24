@@ -51,4 +51,6 @@ pub enum TdmsError {
     ZeroLengthDataBlock,
     #[error("A data block has no active channels. The file is likely to be corrupted.")]
     NoActiveChannelsInDataBlock,
+    #[error("The data block wants to use the same data type as previous, but no previous type is available.")]
+    NoPreviousType,
 }
