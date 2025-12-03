@@ -265,6 +265,61 @@ impl<'a> TryFrom<&'a PropertyValue> for &'a str {
     }
 }
 
+#[cfg(feature = "chrono")]
+mod chrono_support {
+    use super::*;
+    use chrono::{DateTime, Utc};
+
+    impl TryFrom<PropertyValue> for DateTime<Utc> {
+        type Error = TdmsError;
+
+        fn try_from(value: PropertyValue) -> Result<Self, Self::Error> {
+            let lvtime: LVTime = value.try_into()?;
+            let chrono_time: DateTime<Utc> = lvtime
+                .try_into()
+                .map_err(TdmsError::ChronoDateTimeConversionFailed)?;
+            Ok(chrono_time)
+        }
+    }
+
+    impl<'a> TryFrom<&'a PropertyValue> for DateTime<Utc> {
+        type Error = TdmsError;
+
+        fn try_from(value: &'a PropertyValue) -> Result<Self, Self::Error> {
+            let lvtime: LVTime = value.try_into()?;
+            let chrono_time: DateTime<Utc> = lvtime
+                .try_into()
+                .map_err(TdmsError::ChronoDateTimeConversionFailed)?;
+            Ok(chrono_time)
+        }
+    }
+
+    impl From<DateTime<Utc>> for PropertyValue {
+        fn from(value: DateTime<Utc>) -> Self {
+            PropertyValue::Timestamp(value.into())
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use chrono::SubsecRound;
+        use super::*;
+
+        #[test]
+        fn test_datetime_conversion() {
+            let mut dt = Utc::now();
+            // there is some precision loss so need to round.
+            dt = dt.round_subsecs(0);
+            let prop_value: PropertyValue = dt.into();
+            let prop_value_ref: &PropertyValue = &prop_value;
+            let dt_from_prop_value_ref: DateTime<Utc> = prop_value_ref.try_into().unwrap();
+            assert_eq!(dt, dt_from_prop_value_ref);
+            let dt_from_prop_value: DateTime<Utc> = prop_value.try_into().unwrap();
+            assert_eq!(dt, dt_from_prop_value);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

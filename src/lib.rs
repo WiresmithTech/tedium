@@ -11,11 +11,11 @@ mod raw_data;
 pub use error::TdmsError;
 pub use file::TdmsFile;
 pub use file::TdmsFileWriter;
+pub use io::data_types::DataType;
 pub use io::data_types::TdmsStorageType;
 pub use paths::{ChannelPath, PropertyPath};
 pub use properties::PropertyValue;
 pub use raw_data::DataLayout;
-pub use io::data_types::DataType;
 
 // Put the types in their own namespace.
 pub mod types {
