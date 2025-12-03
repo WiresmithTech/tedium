@@ -193,6 +193,20 @@ macro_rules! impl_conversion_for_property_value {
                 }
             }
         }
+
+        impl<'a> TryFrom<&'a PropertyValue> for $type {
+            type Error = TdmsError;
+
+            fn try_from(value: &'a PropertyValue) -> Result<Self, Self::Error> {
+                match value {
+                    PropertyValue::$variant(value) => Ok(*value),
+                    _ => Err(TdmsError::DataTypeMismatch(
+                        value.datatype(),
+                        DataType::$variant,
+                    )),
+                }
+            }
+        }
     };
 }
 
@@ -293,6 +307,16 @@ mod tests {
 
                     let value: $type = prop_value.try_into().unwrap();
                     assert_eq!(value, $value);
+                }
+
+                #[allow(non_snake_case)]
+                #[test]
+                fn [< $name _conversion_reference >]() {
+                    let value: $type = $value;
+                    let prop_value: PropertyValue = value.into();
+                    let prop_value_ref: &PropertyValue = &prop_value;
+                    let value_ref: $type = prop_value_ref.try_into().unwrap();
+                    assert_eq!(value_ref, $value);
                 }
             }
         };
