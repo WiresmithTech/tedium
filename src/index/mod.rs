@@ -105,8 +105,8 @@ impl ObjectData {
     }
 
     /// Fetch all the properties as an array.
-    fn get_all_properties(&self) -> Vec<(&String, &PropertyValue)> {
-        self.properties.iter().collect()
+    fn get_all_properties(&self) -> impl Iterator<Item = (&String, &PropertyValue)> {
+        self.properties.iter()
     }
 }
 
@@ -132,7 +132,7 @@ impl Index {
     pub fn get_object_properties(
         &self,
         path: &PropertyPath,
-    ) -> Option<Vec<(&String, &PropertyValue)>> {
+    ) -> Option<impl Iterator<Item = (&String, &PropertyValue)>> {
         self.objects
             .get(path.path())
             .map(|object| object.get_all_properties())

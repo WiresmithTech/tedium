@@ -261,21 +261,21 @@ mod tests {
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
         let ch1_properties = index
             .get_object_properties(&ChannelPath::new("group", "ch1").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
         );
         let ch2_properties = index
             .get_object_properties(&ChannelPath::new("group", "ch2").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
@@ -354,21 +354,21 @@ mod tests {
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
         let ch1_properties = index
             .get_object_properties(&ChannelPath::new("group", "ch1").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-1))]
         );
         let ch2_properties = index
             .get_object_properties(&ChannelPath::new("group", "ch2").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
@@ -738,14 +738,14 @@ mod tests {
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-52))]
         );
         let ch1_properties = index
             .get_object_properties(ChannelPath::new("group", "ch1").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch1_properties,
             &[(&"Prop1".to_string(), &PropertyValue::I32(-2))]
@@ -806,21 +806,21 @@ mod tests {
 
         let group_properties = index
             .get_object_properties(&PropertyPath::group("group"))
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             group_properties,
             &[(&"Prop".to_string(), &PropertyValue::I32(-51))]
         );
         let ch1_properties = index
             .get_object_properties(ChannelPath::new("group", "ch1").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch1_properties,
             &[(&String::from("Prop1"), &PropertyValue::I32(-2))]
         );
         let ch2_properties = index
             .get_object_properties(ChannelPath::new("group", "ch2").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch2_properties,
             &[(&"Prop2".to_string(), &PropertyValue::I32(-2))]
@@ -1089,7 +1089,7 @@ mod tests {
 
         let ch3_properties = index
             .get_object_properties(ChannelPath::new("group", "ch3").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]
@@ -1201,7 +1201,7 @@ mod tests {
 
         let ch3_properties = index
             .get_object_properties(ChannelPath::new("group", "ch3").as_ref())
-            .unwrap();
+            .unwrap().collect::<Vec<_>>();
         assert_eq!(
             ch3_properties,
             &[(&"Prop3".to_string(), &PropertyValue::I32(-3))]

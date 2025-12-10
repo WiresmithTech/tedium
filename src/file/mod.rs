@@ -115,7 +115,7 @@ impl<F: Read + Seek> TdmsFile<F> {
     pub fn read_all_properties(
         &self,
         object_path: &PropertyPath,
-    ) -> Option<Vec<(&String, &PropertyValue)>> {
+    ) -> Option<impl Iterator<Item = (&String, &PropertyValue)>> {
         self.index.get_object_properties(object_path)
     }
 
