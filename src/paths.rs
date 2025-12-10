@@ -116,6 +116,53 @@ impl PropertyPath {
         self.0.as_ref()
     }
 
+    /// Get the levels of the path structure
+    fn path_levels(&self) -> impl Iterator<Item = &str> {
+        self.0.split('/').skip(1).filter_map(|value| {
+            if value.starts_with("'") && value.ends_with("'") {
+                Some(&value[1..value.len() - 1])
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Get the group name from the path, if there is one.
+    ///
+    /// Returns None if the path does not contain a group.
+    ///
+    /// ```rust
+    /// use tedium::PropertyPath;
+    ///
+    /// let file = PropertyPath::file();
+    /// let group = PropertyPath::group("group");
+    /// let channel = PropertyPath::channel("group", "channel");
+    ///
+    /// assert_eq!(file.group_name(), None);
+    /// assert_eq!(group.group_name(), Some("group"));
+    /// assert_eq!(channel.group_name(), Some("group"));
+    /// ```
+    pub fn group_name(&self) -> Option<&str> {
+        self.path_levels().next()
+    }
+
+    /// Get the channel name from the path, if there is one.
+    ///
+    /// ```rust
+    /// use tedium::PropertyPath;
+    ///
+    /// let file = PropertyPath::file();
+    /// let group = PropertyPath::group("group");
+    /// let channel = PropertyPath::channel("group", "channel");
+    ///
+    /// assert_eq!(file.channel_name(), None);
+    /// assert_eq!(group.channel_name(), None);
+    /// assert_eq!(channel.channel_name(), Some("channel"));
+    /// ```
+    pub fn channel_name(&self) -> Option<&str> {
+        self.path_levels().nth(1)
+    }
+
     fn path_depth(&self) -> usize {
         self.0.chars().filter(|c| *c == '/').count()
     }

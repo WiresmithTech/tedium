@@ -7,7 +7,7 @@ homepage = "https://github.com/WiresmithTech/tedium"
 repository = "https://github.com/WiresmithTech/tedium"
 description = "A fast and easy TDMS Library for Rust"
 keywords = ["labview", "ni", "tdms"]
-readme = ".\\README.md"
+readme = "README.md"
 
 [features]
 default = []
