@@ -122,7 +122,7 @@ impl<F: Read + Seek> TdmsFile<F> {
     /// Read all groups in the file.
     ///
     /// Returns an iterator to the paths for each group.
-    pub fn list_groups<'a>(&'a self) -> impl Iterator<Item = PropertyPath> + 'a {
+    pub fn list_groups<'a>(&'a self) -> impl Iterator<Item = &'a str> + 'a {
         // We cannot guarantee a seperate path for the group has been written
         // as they are implicitly included in the channel path as well.
         // Therefore extract all possible group names from all paths and deduplicate.
@@ -137,7 +137,7 @@ impl<F: Read + Seek> TdmsFile<F> {
             }
         }
 
-        groups.into_iter().map(PropertyPath::group)
+        groups.into_iter()
     }
 
     /// Read all the channels in a group.
@@ -226,7 +226,7 @@ mod tests {
         drop(writer);
         let groups: Vec<_> = file.list_groups().collect();
         assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0], PropertyPath::group("group"));
+        assert_eq!(groups[0], "group");
     }
 
     #[test]
@@ -250,8 +250,8 @@ mod tests {
         drop(writer);
         let groups: Vec<_> = file.list_groups().collect();
         assert_eq!(groups.len(), 2);
-        assert_eq!(groups[0], PropertyPath::group("group"));
-        assert_eq!(groups[1], PropertyPath::group("group2"));
+        assert_eq!(groups[0], "group");
+        assert_eq!(groups[1], "group2");
     }
 
     #[test]
@@ -270,7 +270,7 @@ mod tests {
         drop(writer);
         let groups: Vec<_> = file.list_groups().collect();
         assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0], PropertyPath::group("group"));
+        assert_eq!(groups[0], "group");
     }
 
     #[test]
