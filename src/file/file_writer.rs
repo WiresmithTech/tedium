@@ -107,7 +107,13 @@ struct DataStreamWriter<'a, F: Write, W: TdmsWriter<F>> {
 }
 
 impl<'a, F: Write, W: TdmsWriter<F>> DataStreamWriter<'a, F, W> {
-    pub fn new<'b, C: AsRef<ChannelPath>, D: TdmsStorageType>(index: &'a mut Index, writer: &'a mut W, channels: &'b [C], values: &'b [D], layout: DataLayout) -> Result<Self, TdmsError> {
+    pub fn new<'b, C: AsRef<ChannelPath>, D: TdmsStorageType>(
+        index: &'a mut Index,
+        writer: &'a mut W,
+        channels: &'b [C],
+        values: &'b [D],
+        layout: DataLayout,
+    ) -> Result<Self, TdmsError> {
         let channel_count = NonZeroUsize::new(channels.len()).ok_or(TdmsError::NoChannels)?;
         let raw_data = MultiChannelSlice::from_slice(values, channel_count)?;
         let data_structures = raw_data
@@ -144,7 +150,12 @@ impl<'a, F: Write, W: TdmsWriter<F>> DataStreamWriter<'a, F, W> {
             ..Default::default()
         };
         let segment = writer.write_segment(toc, meta, Some(raw_data))?;
-        Ok(Self { index, writer, _file: std::marker::PhantomData, segment })
+        Ok(Self {
+            index,
+            writer,
+            _file: std::marker::PhantomData,
+            segment,
+        })
     }
 
     pub fn end_stream(self) -> Result<(), TdmsError> {

@@ -302,8 +302,8 @@ mod chrono_support {
 
     #[cfg(test)]
     mod tests {
-        use chrono::SubsecRound;
         use super::*;
+        use chrono::SubsecRound;
 
         #[test]
         fn test_datetime_conversion() {
