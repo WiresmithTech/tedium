@@ -2,7 +2,7 @@ use crate::error::TdmsError;
 use crate::index::{DataFormat, Index};
 use crate::io::data_types::TdmsStorageType;
 use crate::io::writer::TdmsWriter;
-use crate::meta_data::{MetaData, ObjectMetaData, ToC};
+use crate::meta_data::{MetaData, ObjectMetaData, Segment, ToC};
 use crate::paths::ChannelPath;
 use crate::raw_data::{MultiChannelSlice, WriteBlock};
 use crate::{DataLayout, PropertyPath, PropertyValue};
@@ -36,49 +36,14 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
     /// If layout is [`DataLayout::Interleaved`] then the data is assumed to be interleaved. i.e. ch1, ch2, ch1, ch2
     ///
     /// If layout is [`DataLayout::Contigious`] then the data is assumed to be contigious. i.e. ch1, ch1, ch1, ch2, ch2, ch2
-    pub fn write_channels<D: TdmsStorageType, C: AsRef<ChannelPath>>(
+    pub fn write_channels<'b, D: TdmsStorageType, C: AsRef<ChannelPath>>(
         &mut self,
-        channels: &[C],
-        values: &[D],
+        channels: &'b [C],
+        values: &'b [D],
         layout: DataLayout,
     ) -> Result<(), TdmsError> {
-        let channel_count = NonZeroUsize::new(channels.len()).ok_or(TdmsError::NoChannels)?;
-        let raw_data = MultiChannelSlice::from_slice(values, channel_count)?;
-        let data_structures = raw_data
-            .data_structure()
-            .into_iter()
-            .map(DataFormat::RawData);
-
-        let channels = channels
-            .iter()
-            .map(|path| path.as_ref().path()) //surely a way to avoid this.
-            .zip(data_structures)
-            .collect();
-
-        let (matches_live, channels) = self.index.check_write_values(channels);
-
-        let meta = if matches_live {
-            None
-        } else {
-            let objects: Vec<ObjectMetaData> = channels
-                .into_iter()
-                .map(|(path, raw_index)| ObjectMetaData {
-                    path: path.to_string(),
-                    properties: vec![],
-                    raw_data_index: raw_index,
-                })
-                .collect();
-
-            Some(MetaData { objects })
-        };
-
-        let toc = ToC {
-            contains_new_object_list: !matches_live,
-            data_is_interleaved: layout == DataLayout::Interleaved,
-            ..Default::default()
-        };
-        let segment = self.writer.write_segment(toc, meta, Some(raw_data))?;
-        self.index.add_segment(segment)?;
+        let stream = DataStreamWriter::new(self.index, &mut self.writer, channels, values, layout)?;
+        stream.end_stream()?;
         Ok(())
     }
 
@@ -131,5 +96,59 @@ impl<'a, F: Write, W: TdmsWriter<&'a mut F>> TdmsFileWriter<'a, F, W> {
     /// Forces the file to sync to disk by calling the sync method on the writer.
     pub fn sync(&mut self) -> Result<(), TdmsError> {
         self.writer.sync()
+    }
+}
+
+struct DataStreamWriter<'a, F: Write, W: TdmsWriter<F>> {
+    index: &'a mut Index,
+    writer: &'a mut W,
+    _file: std::marker::PhantomData<F>,
+    segment: Segment,
+}
+
+impl<'a, F: Write, W: TdmsWriter<F>> DataStreamWriter<'a, F, W> {
+    pub fn new<'b, C: AsRef<ChannelPath>, D: TdmsStorageType>(index: &'a mut Index, writer: &'a mut W, channels: &'b [C], values: &'b [D], layout: DataLayout) -> Result<Self, TdmsError> {
+        let channel_count = NonZeroUsize::new(channels.len()).ok_or(TdmsError::NoChannels)?;
+        let raw_data = MultiChannelSlice::from_slice(values, channel_count)?;
+        let data_structures = raw_data
+            .data_structure()
+            .into_iter()
+            .map(DataFormat::RawData);
+
+        let channels = channels
+            .iter()
+            .map(|path| path.as_ref().path()) //surely a way to avoid this.
+            .zip(data_structures)
+            .collect();
+
+        let (matches_live, channels) = index.check_write_values(channels);
+
+        let meta = if matches_live {
+            None
+        } else {
+            let objects: Vec<ObjectMetaData> = channels
+                .into_iter()
+                .map(|(path, raw_index)| ObjectMetaData {
+                    path: path.to_string(),
+                    properties: vec![],
+                    raw_data_index: raw_index,
+                })
+                .collect();
+
+            Some(MetaData { objects })
+        };
+
+        let toc = ToC {
+            contains_new_object_list: !matches_live,
+            data_is_interleaved: layout == DataLayout::Interleaved,
+            ..Default::default()
+        };
+        let segment = writer.write_segment(toc, meta, Some(raw_data))?;
+        Ok(Self { index, writer, _file: std::marker::PhantomData, segment })
+    }
+
+    pub fn end_stream(self) -> Result<(), TdmsError> {
+        self.index.add_segment(self.segment)?;
+        Ok(())
     }
 }
