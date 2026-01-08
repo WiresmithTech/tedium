@@ -1,7 +1,7 @@
 [package]
 name = "tedium"
-version = "0.1.0"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/WiresmithTech/tedium"
 repository = "https://github.com/WiresmithTech/tedium"
@@ -22,7 +22,7 @@ labview-interop = "0.4"
 chrono = { version = "0.4", optional = true}
 
 [dev-dependencies]
-criterion = "0.7"
+criterion = "0.8"
 
 [[bench]]
 name = "tedium_benchmark"
