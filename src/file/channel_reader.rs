@@ -36,7 +36,7 @@ impl ChannelProgress {
     }
 }
 
-impl<F: std::io::Read + std::io::Seek + std::io::Write + std::fmt::Debug> TdmsFile<F> {
+impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
     /// Get the length of the channel.
     pub fn channel_length(&self, channel: &ChannelPath) -> Option<u64> {
         self.index.channel_length(channel)
@@ -164,7 +164,7 @@ fn update_progress(
     channel_progress: &mut [ChannelProgress],
     iteration_samples: usize,
 ) -> bool {
-    assert!(channel_progress.len() == location.channel_indexes.len());
+    assert_eq!(channel_progress.len(), location.channel_indexes.len());
 
     for (ch_idx, block_idx) in location.channel_indexes.iter().enumerate() {
         if block_idx.is_some() {
