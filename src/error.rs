@@ -8,7 +8,7 @@ pub enum TdmsError {
     #[error("Matching datatype not found for code {0:X}")]
     UnknownDataType(u32),
     #[error("Index reader error")]
-    IndexReaderError(#[source] Box<dyn std::error::Error>),
+    IndexReaderError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
     #[error("Group or Channel not found in index. {0}")]
     MissingObject(ObjectPathOwned),
     #[error("IO Error")]
