@@ -86,40 +86,8 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
             .get_channel_data_positions(channel)
             .ok_or_else(|| TdmsError::MissingObject(channel.path().to_owned()))?;
 
-        let mut samples_to_skip = start;
-        let mut samples_read = 0;
-
-        for location in data_positions {
-            // Skip entire blocks if possible
-            if samples_to_skip >= location.number_of_samples {
-                samples_to_skip -= location.number_of_samples;
-                continue;
-            }
-
-            let block = self
-                .index
-                .get_data_block(location.data_block)
-                .ok_or_else(|| {
-                    TdmsError::DataBlockNotFound(channel.clone(), location.data_block)
-                })?;
-
-            // Read from this block with offset
-            samples_read += block.read_single_from(
-                location.channel_index,
-                samples_to_skip,
-                &mut self.file,
-                &mut output[samples_read..],
-            )?;
-
-            // After the first partial read, no more samples to skip
-            samples_to_skip = 0;
-
-            if samples_read >= output.len() {
-                break;
-            }
-        }
-
-        Ok(())
+        let plan = read_plan(&[data_positions], &[start]);
+        self.execute_read_plan(plan, &mut [output])
     }
 
     /// Read multiple channels from the tdms file.
@@ -166,6 +134,18 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
         let start_skips: Vec<u64> = vec![start; channels.len()];
         let plan = read_plan(&channel_positions[..], &start_skips);
 
+        self.execute_read_plan(plan, output)
+    }
+
+    /// Execute a read plan, reading data from blocks into the output slices.
+    ///
+    /// This is the core read execution logic used by all read methods.
+    /// The plan specifies which blocks to read and any per-channel skip amounts.
+    fn execute_read_plan<D: TdmsStorageType>(
+        &mut self,
+        plan: Vec<BlockRead>,
+        output: &mut [&mut [D]],
+    ) -> Result<(), TdmsError> {
         let mut channel_progress: Vec<ChannelProgress> = output
             .iter()
             .map(|out_slice| ChannelProgress::new(out_slice.len()))
@@ -176,10 +156,7 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
             let any_skip_needed = location
                 .channel_indexes
                 .iter()
-                .zip(channel_progress.iter())
-                .any(|(plan, progress)| {
-                    matches!(plan, Some(p) if p.samples_to_skip > 0 && !progress.is_complete())
-                });
+                .any(|plan| plan.is_some() && plan.as_ref().unwrap().samples_to_skip > 0);
 
             let block = self
                 .index
