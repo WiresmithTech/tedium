@@ -205,9 +205,7 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
             let mut any_channel_needs_read = false;
             let mut skip_in_block = 0u64;
 
-            for (ch_idx, progress) in
-                location.channel_indexes.iter().zip(channel_progress.iter())
-            {
+            for (ch_idx, progress) in location.channel_indexes.iter().zip(channel_progress.iter()) {
                 if ch_idx.is_some() && !progress.is_complete() {
                     let (skip, available) = progress.calculate_block_skip(block_samples);
                     if available > 0 {
