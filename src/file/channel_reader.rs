@@ -228,16 +228,13 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
                     )
                 })?;
 
-            let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
-
             // Use fast path if no skip needed, slow path otherwise
             let location_samples_read = if any_skip_needed {
-                block.read_with_per_channel_skip(
-                    &mut self.file,
-                    &mut channels_to_read,
-                    &read_channel_skips,
-                )?
+                let mut channels_with_skip =
+                    get_block_read_data_with_skip(&location, output, &channel_progress, &read_channel_skips);
+                block.read_with_per_channel_skip(&mut self.file, &mut channels_with_skip)?
             } else {
+                let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
                 block.read(&mut self.file, &mut channels_to_read)?
             };
 
@@ -279,6 +276,33 @@ fn get_block_read_data<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
                 (Some(_), progress) if progress.is_complete() => None,
                 // More to read - include this channel.
                 (Some(idx), progress) => Some((*idx, &mut output[progress.samples_read..])),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+/// Get the read parameters, output, and skip amounts for this particular block.
+fn get_block_read_data_with_skip<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
+    location: &'a MultiChannelLocation,
+    output: &'b mut [&'c mut [D]],
+    channel_progress: &[ChannelProgress],
+    skip_amounts: &[u64],
+) -> Vec<(usize, &'o mut [D], u64)> {
+    location
+        .channel_indexes
+        .iter()
+        .zip(output.iter_mut())
+        .zip(channel_progress.iter())
+        .zip(skip_amounts.iter())
+        .filter_map(|(((channel_id, output), progress), &skip)| {
+            match (channel_id, progress) {
+                // If we have it our target, ignore this channel.
+                (Some(_), progress) if progress.is_complete() => None,
+                // More to read - include this channel with its skip amount.
+                (Some(idx), progress) => {
+                    Some((*idx, &mut output[progress.samples_read..], skip))
+                }
                 _ => None,
             }
         })

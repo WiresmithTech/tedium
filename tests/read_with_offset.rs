@@ -282,3 +282,61 @@ fn test_read_channels_from_preserves_existing_behavior() {
         "read_channels should still work after refactoring"
     );
 }
+
+#[test]
+fn test_read_channels_from_separate_blocks() {
+    // Test the specific scenario where channels are written in separate blocks
+    // This ensures per-channel skip tracking works correctly
+    use tedium::DataLayout;
+
+    let mut file = common::get_empty_file();
+    let mut writer = file.writer().unwrap();
+
+    let channel1 = tedium::ChannelPath::new("test", "ch1");
+    let channel2 = tedium::ChannelPath::new("test", "ch2");
+
+    // Write channel 1 in first block (1000 samples)
+    let data1: Vec<f64> = (0..1000).map(|i| i as f64).collect();
+    writer
+        .write_channels(&[&channel1], &data1, DataLayout::Contigious)
+        .unwrap();
+
+    // Write channel 2 in second block (1000 samples)
+    let data2: Vec<f64> = (1000..2000).map(|i| i as f64).collect();
+    writer
+        .write_channels(&[&channel2], &data2, DataLayout::Contigious)
+        .unwrap();
+
+    // Write both channels together in third block (1000 samples each)
+    let data3: Vec<f64> = (2000..4000).map(|i| i as f64).collect();
+    writer
+        .write_channels(&[&channel1, &channel2], &data3, DataLayout::Contigious)
+        .unwrap();
+
+    drop(writer);
+
+    // Now test reading with offset
+    // Ch1 has: Block 0 (1000 samples), Block 2 (1000 samples) = 2000 total
+    // Ch2 has: Block 1 (1000 samples), Block 2 (1000 samples) = 2000 total
+
+    // Read from position 500
+    let mut output1 = vec![0.0f64; 100];
+    let mut output2 = vec![0.0f64; 100];
+    let mut outputs: Vec<&mut [f64]> = vec![&mut output1, &mut output2];
+
+    file.read_channels_from(&[&channel1, &channel2], 500, &mut outputs)
+        .unwrap();
+
+    // Ch1 should skip 500 in Block 0, read samples 500-599 from Block 0
+    // Ch2 should skip 500 in Block 1, read samples 500-599 from Block 1
+    assert_eq!(
+        &output1[0..10],
+        &[500.0, 501.0, 502.0, 503.0, 504.0, 505.0, 506.0, 507.0, 508.0, 509.0],
+        "Ch1 should read from position 500 in its data stream"
+    );
+    assert_eq!(
+        &output2[0..10],
+        &[1500.0, 1501.0, 1502.0, 1503.0, 1504.0, 1505.0, 1506.0, 1507.0, 1508.0, 1509.0],
+        "Ch2 should read from position 500 in its data stream (which is 1500 in the original data)"
+    );
+}
