@@ -212,8 +212,7 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
             // If no channel needs to read, skip this block entirely
             if !any_channel_needs_read {
                 // Update skip progress for all channels
-                for (progress, &skip) in channel_progress.iter_mut().zip(all_channel_skips.iter())
-                {
+                for (progress, &skip) in channel_progress.iter_mut().zip(all_channel_skips.iter()) {
                     progress.samples_to_skip = progress.samples_to_skip.saturating_sub(skip);
                 }
                 continue;
