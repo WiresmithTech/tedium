@@ -230,8 +230,12 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
 
             // Use fast path if no skip needed, slow path otherwise
             let location_samples_read = if any_skip_needed {
-                let mut channels_with_skip =
-                    get_block_read_data_with_skip(&location, output, &channel_progress, &read_channel_skips);
+                let mut channels_with_skip = get_block_read_data_with_skip(
+                    &location,
+                    output,
+                    &channel_progress,
+                    &read_channel_skips,
+                );
                 block.read_with_per_channel_skip(&mut self.file, &mut channels_with_skip)?
             } else {
                 let mut channels_to_read =
