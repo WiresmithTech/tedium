@@ -49,7 +49,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
     /// For contiguous data, samples are stored sequentially per channel:
     /// [Ch1 S0][Ch1 S1]...[Ch1 SN][Ch2 S0][Ch2 S1]...
     ///
-    /// To skip samples, we calculate the byte offset for each channel and seek accordingly.
+    /// To skip samples, we need to skip within each channel's contiguous data.
     pub fn read_from<D: TdmsStorageType>(
         &mut self,
         mut channels: RecordStructure<D>,
@@ -59,20 +59,48 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
 
         let total_sub_blocks = self.block_size.get() / channels.block_size() as u64;
 
-        // Calculate how many complete sub-blocks to skip
-        let sub_blocks_to_skip = start_sample.min(total_sub_blocks);
-        let remaining_sub_blocks = total_sub_blocks.saturating_sub(sub_blocks_to_skip);
-
-        // Skip entire sub-blocks by seeking
-        if sub_blocks_to_skip > 0 {
-            let skip_bytes = sub_blocks_to_skip as i64 * channels.block_size() as i64;
-            self.reader.move_position(skip_bytes)?;
-        }
-
         let mut length = 0;
 
-        for _ in 0..remaining_sub_blocks {
-            length += self.read_sub_block(&mut channels)?;
+        for _ in 0..total_sub_blocks {
+            length += self.read_sub_block_with_offset(&mut channels, start_sample)?;
+        }
+
+        Ok(length)
+    }
+
+    fn read_sub_block_with_offset<D: TdmsStorageType>(
+        &mut self,
+        channels: &mut RecordStructure<'_, D>,
+        start_sample: u64,
+    ) -> Result<usize, TdmsError> {
+        let mut length = 0;
+        for read_instruction in channels.read_instructions().iter_mut() {
+            match &mut read_instruction.plan {
+                RecordEntryPlan::Read(output) => {
+                    // Skip the specified number of samples at the start
+                    let samples_to_skip = start_sample.min(read_instruction.length as u64) as usize;
+                    let samples_to_read = read_instruction.length.saturating_sub(samples_to_skip);
+                    
+                    // Skip samples by seeking
+                    if samples_to_skip > 0 {
+                        let skip_bytes = samples_to_skip as i64 * D::SIZE_BYTES as i64;
+                        self.reader.move_position(skip_bytes)?;
+                    }
+                    
+                    // Read the remaining samples
+                    for _ in 0..samples_to_read {
+                        let read_value = self.reader.read_value()?;
+                        if let Some(value) = output.next() {
+                            *value = read_value;
+                        }
+                    }
+                    length = samples_to_read;
+                }
+                RecordEntryPlan::Skip(bytes) => {
+                    let skip_bytes = *bytes * read_instruction.length as i64;
+                    self.reader.move_position(skip_bytes)?;
+                }
+            };
         }
 
         Ok(length)
