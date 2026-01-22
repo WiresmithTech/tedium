@@ -39,7 +39,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
     /// allows for different lengths but all clients have I have seen do not.
     pub fn read<D: TdmsStorageType>(
         &mut self,
-        mut channels: RecordStructure<D>,
+        channels: RecordStructure<D>,
     ) -> Result<usize, TdmsError> {
         self.read_from(channels, 0)
     }
