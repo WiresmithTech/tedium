@@ -261,7 +261,8 @@ impl DataBlock {
     /// Read multiple channels from the block starting at a specific sample offset.
     ///
     /// This is the core implementation that supports reading with an offset.
-    fn read_from<'b, D: TdmsStorageType>(
+    /// The start_sample parameter indicates how many samples to skip in this block.
+    pub fn read_from<'b, D: TdmsStorageType>(
         &self,
         reader: &mut (impl Read + Seek),
         channels_to_read: &'b mut [(usize, &'b mut [D])],

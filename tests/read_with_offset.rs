@@ -156,3 +156,129 @@ fn test_read_channel_from_preserves_existing_behavior() {
         "read_channel should still work after refactoring"
     );
 }
+
+// ============================================================================
+// Multi-channel offset tests
+// ============================================================================
+
+#[test]
+fn test_read_channels_from_start_zero() {
+    // Reading from start position 0 should be identical to read_channels
+    let mut file = common::open_test_file();
+    let channel1 = ChannelPath::new("structure", "ch1");
+    let channel2 = ChannelPath::new("structure", "ch2");
+    let channels = [&channel1, &channel2];
+
+    let mut output1_normal = vec![0.0f64; 10];
+    let mut output2_normal = vec![0.0f64; 10];
+    let mut outputs_normal: Vec<&mut [f64]> = vec![&mut output1_normal, &mut output2_normal];
+
+    let mut output1_from = vec![0.0f64; 10];
+    let mut output2_from = vec![0.0f64; 10];
+    let mut outputs_from: Vec<&mut [f64]> = vec![&mut output1_from, &mut output2_from];
+
+    let mut file2 = common::open_test_file();
+
+    file.read_channels(&channels, &mut outputs_normal).unwrap();
+    file2
+        .read_channels_from(&channels, 0, &mut outputs_from)
+        .unwrap();
+
+    assert_eq!(
+        output1_normal, output1_from,
+        "Channel 1: Reading from position 0 should match normal read"
+    );
+    assert_eq!(
+        output2_normal, output2_from,
+        "Channel 2: Reading from position 0 should match normal read"
+    );
+}
+
+#[test]
+fn test_read_channels_from_middle() {
+    // Read first 20 samples normally, then read from position 10 and compare
+    let mut file = common::open_test_file();
+    let channel1 = ChannelPath::new("structure", "ch1");
+    let channel2 = ChannelPath::new("structure", "ch2");
+    let channels = [&channel1, &channel2];
+
+    let mut full_read1 = vec![0.0f64; 20];
+    let mut full_read2 = vec![0.0f64; 20];
+    let mut full_outputs: Vec<&mut [f64]> = vec![&mut full_read1, &mut full_read2];
+    file.read_channels(&channels, &mut full_outputs).unwrap();
+
+    // Now read from position 10
+    let mut file2 = common::open_test_file();
+    let mut offset_read1 = vec![0.0f64; 10];
+    let mut offset_read2 = vec![0.0f64; 10];
+    let mut offset_outputs: Vec<&mut [f64]> = vec![&mut offset_read1, &mut offset_read2];
+    file2
+        .read_channels_from(&channels, 10, &mut offset_outputs)
+        .unwrap();
+
+    // The offset read should match the second half of the full read
+    assert_eq!(
+        &full_read1[10..20],
+        &offset_read1[..],
+        "Channel 1: Offset read should match corresponding portion of full read"
+    );
+    assert_eq!(
+        &full_read2[10..20],
+        &offset_read2[..],
+        "Channel 2: Offset read should match corresponding portion of full read"
+    );
+}
+
+#[test]
+fn test_read_channels_from_with_small_output() {
+    // Test that reading with offset respects output buffer size
+    let mut file = common::open_test_file();
+    let channel1 = ChannelPath::new("structure", "ch1");
+    let channel2 = ChannelPath::new("structure", "ch2");
+    let channels = [&channel1, &channel2];
+
+    let mut full_read1 = vec![0.0f64; 30];
+    let mut full_read2 = vec![0.0f64; 30];
+    let mut full_outputs: Vec<&mut [f64]> = vec![&mut full_read1, &mut full_read2];
+    file.read_channels(&channels, &mut full_outputs).unwrap();
+
+    // Read 5 samples starting from position 10
+    let mut file2 = common::open_test_file();
+    let mut offset_read1 = vec![0.0f64; 5];
+    let mut offset_read2 = vec![0.0f64; 5];
+    let mut offset_outputs: Vec<&mut [f64]> = vec![&mut offset_read1, &mut offset_read2];
+    file2
+        .read_channels_from(&channels, 10, &mut offset_outputs)
+        .unwrap();
+
+    assert_eq!(
+        &full_read1[10..15],
+        &offset_read1[..],
+        "Channel 1: Should read correct samples with small buffer"
+    );
+    assert_eq!(
+        &full_read2[10..15],
+        &offset_read2[..],
+        "Channel 2: Should read correct samples with small buffer"
+    );
+}
+
+#[test]
+fn test_read_channels_from_preserves_existing_behavior() {
+    // Ensure that the refactored read_channels still works correctly
+    let mut file = common::open_test_file();
+    let channel1 = ChannelPath::new("structure", "ch1");
+    let channel2 = ChannelPath::new("structure", "ch2");
+    let channels = [&channel1, &channel2];
+
+    let mut output1 = vec![0.0f64; 50];
+    let mut output2 = vec![0.0f64; 50];
+    let mut outputs: Vec<&mut [f64]> = vec![&mut output1, &mut output2];
+
+    let result = file.read_channels(&channels, &mut outputs);
+
+    assert!(
+        result.is_ok(),
+        "read_channels should still work after refactoring"
+    );
+}

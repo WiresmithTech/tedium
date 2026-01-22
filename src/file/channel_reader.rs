@@ -17,6 +17,10 @@ struct MultiChannelLocation {
 struct ChannelProgress {
     samples_read: usize,
     samples_target: usize,
+    /// Total samples skipped so far (for tracking cumulative position)
+    samples_skipped: u64,
+    /// Original start offset requested
+    start_offset: u64,
 }
 
 impl ChannelProgress {
@@ -24,6 +28,17 @@ impl ChannelProgress {
         Self {
             samples_read: 0,
             samples_target,
+            samples_skipped: 0,
+            start_offset: 0,
+        }
+    }
+
+    fn new_with_offset(samples_target: usize, start_offset: u64) -> Self {
+        Self {
+            samples_read: 0,
+            samples_target,
+            samples_skipped: 0,
+            start_offset,
         }
     }
 
@@ -33,6 +48,24 @@ impl ChannelProgress {
 
     fn add_samples(&mut self, samples: usize) {
         self.samples_read += samples;
+    }
+
+    /// Calculate how many samples to skip in this block and how many are available to read.
+    /// Does NOT modify state - use `record_skipped_samples` to update after processing.
+    fn calculate_block_skip(&self, block_samples: u64) -> (u64, u64) {
+        let remaining_to_skip = self.start_offset.saturating_sub(self.samples_skipped);
+        if remaining_to_skip >= block_samples {
+            // Skip entire block
+            (block_samples, 0) // (samples_to_skip, samples_available)
+        } else {
+            // Partial skip
+            (remaining_to_skip, block_samples - remaining_to_skip)
+        }
+    }
+
+    /// Record that we've processed (skipped) samples from a block.
+    fn record_skipped_samples(&mut self, samples: u64) {
+        self.samples_skipped += samples;
     }
 }
 
@@ -125,6 +158,29 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
         channels: &[impl AsRef<ChannelPath>],
         output: &mut [&mut [D]],
     ) -> Result<(), TdmsError> {
+        self.read_channels_from(channels, 0, output)
+    }
+
+    /// Read multiple channels from the tdms file starting at a specific sample position.
+    ///
+    /// All channels will start reading from the same sample offset.
+    /// This is efficient for time-aligned data where all channels share the same time base.
+    ///
+    /// channels should provide a slice of paths to the channels.
+    /// start is the number of samples to skip before reading (same for all channels).
+    /// output is a set of mutable slices for the data to be written into.
+    /// Each channel will be read for the length of its corresponding slice.
+    ///
+    /// # Performance
+    ///
+    /// This method optimizes reading by skipping entire data blocks when possible.
+    /// A block is only skipped if all channels have their start position beyond that block.
+    pub fn read_channels_from<D: TdmsStorageType>(
+        &mut self,
+        channels: &[impl AsRef<ChannelPath>],
+        start: u64,
+        output: &mut [&mut [D]],
+    ) -> Result<(), TdmsError> {
         let channel_positions = channels
             .iter()
             .map(|channel| {
@@ -138,10 +194,47 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
 
         let mut channel_progress: Vec<ChannelProgress> = output
             .iter()
-            .map(|out_slice| ChannelProgress::new(out_slice.len()))
+            .map(|out_slice| ChannelProgress::new_with_offset(out_slice.len(), start))
             .collect();
 
         for location in read_plan {
+            // Get the number of samples in this block
+            let block_samples = get_block_samples(&location, &channel_positions);
+
+            // Calculate skip for each channel and check if any need to read from this block
+            let mut any_channel_needs_read = false;
+            let mut skip_in_block = 0u64;
+
+            for (ch_idx, progress) in location
+                .channel_indexes
+                .iter()
+                .zip(channel_progress.iter())
+            {
+                if ch_idx.is_some() && !progress.is_complete() {
+                    let (skip, available) = progress.calculate_block_skip(block_samples);
+                    if available > 0 {
+                        any_channel_needs_read = true;
+                        // For uniform start, all channels have the same skip
+                        skip_in_block = skip;
+                    }
+                }
+            }
+
+            // If no channel needs to read, skip this block entirely
+            if !any_channel_needs_read {
+                // Record that we've skipped this block for all channels
+                for (ch_idx, progress) in location
+                    .channel_indexes
+                    .iter()
+                    .zip(channel_progress.iter_mut())
+                {
+                    if ch_idx.is_some() {
+                        progress.record_skipped_samples(block_samples);
+                    }
+                }
+                continue;
+            }
+
             let block = self
                 .index
                 .get_data_block(location.data_block)
@@ -154,7 +247,19 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
 
             let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
 
-            let location_samples_read = block.read(&mut self.file, &mut channels_to_read)?;
+            let location_samples_read =
+                block.read_from(&mut self.file, &mut channels_to_read, skip_in_block)?;
+
+            // Record that we've processed this block (skipped + read)
+            for (ch_idx, progress) in location
+                .channel_indexes
+                .iter()
+                .zip(channel_progress.iter_mut())
+            {
+                if ch_idx.is_some() {
+                    progress.record_skipped_samples(skip_in_block);
+                }
+            }
 
             let read_complete =
                 update_progress(location, &mut channel_progress, location_samples_read);
@@ -213,6 +318,24 @@ fn all_channels_complete(channel_progress: &[ChannelProgress]) -> bool {
     channel_progress
         .iter()
         .all(|progress| progress.is_complete())
+}
+
+/// Get the number of samples in a block for the channels we're reading.
+///
+/// Since all channels in a block should have the same number of samples,
+/// we just return the first one we find.
+fn get_block_samples(location: &MultiChannelLocation, channel_positions: &[&[DataLocation]]) -> u64 {
+    for (ch_idx, block_idx) in location.channel_indexes.iter().enumerate() {
+        if block_idx.is_some() {
+            // Find the data location for this channel in this block
+            for data_loc in channel_positions[ch_idx] {
+                if data_loc.data_block == location.data_block {
+                    return data_loc.number_of_samples;
+                }
+            }
+        }
+    }
+    0
 }
 
 /// Plan the locations that we need to visit for each channel.
