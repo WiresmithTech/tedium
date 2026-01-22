@@ -316,6 +316,9 @@ impl DataBlock {
         reader: &mut (impl Read + Seek),
         channels_to_read: &'b mut [(usize, &'b mut [D], u64)],
     ) -> Result<usize, TdmsError> {
+        // Extract skip amounts first (before mutable borrow)
+        let skip_amounts: Vec<u64> = channels_to_read.iter().map(|(_, _, skip)| *skip).collect();
+
         // Extract the channel indices and buffers for the record plan
         let mut channel_refs: Vec<(usize, &mut [D])> = channels_to_read
             .iter_mut()
@@ -323,9 +326,6 @@ impl DataBlock {
             .collect();
 
         let record_plan = RecordStructure::build_record_plan(&self.channels, &mut channel_refs)?;
-
-        // Extract skip amounts
-        let skip_amounts: Vec<u64> = channels_to_read.iter().map(|(_, _, skip)| *skip).collect();
 
         match (self.layout, self.byte_order) {
             (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
