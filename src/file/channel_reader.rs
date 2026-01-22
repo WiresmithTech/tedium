@@ -283,24 +283,28 @@ fn get_block_read_data<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
 }
 
 /// Get the read parameters, output, and skip amounts for this particular block.
+///
+/// skip_amounts should only contain skips for channels that are present in this block.
 fn get_block_read_data_with_skip<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
     location: &'a MultiChannelLocation,
     output: &'b mut [&'c mut [D]],
     channel_progress: &[ChannelProgress],
     skip_amounts: &[u64],
 ) -> Vec<(usize, &'o mut [D], u64)> {
+    let mut skip_idx = 0;
     location
         .channel_indexes
         .iter()
         .zip(output.iter_mut())
         .zip(channel_progress.iter())
-        .zip(skip_amounts.iter())
-        .filter_map(|(((channel_id, output), progress), &skip)| {
+        .filter_map(|((channel_id, output), progress)| {
             match (channel_id, progress) {
                 // If we have it our target, ignore this channel.
                 (Some(_), progress) if progress.is_complete() => None,
                 // More to read - include this channel with its skip amount.
                 (Some(idx), progress) => {
+                    let skip = skip_amounts[skip_idx];
+                    skip_idx += 1;
                     Some((*idx, &mut output[progress.samples_read..], skip))
                 }
                 _ => None,
