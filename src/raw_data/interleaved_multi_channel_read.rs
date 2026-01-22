@@ -41,10 +41,34 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
         &mut self,
         mut channels: RecordStructure<D>,
     ) -> Result<usize, TdmsError> {
-        self.reader.to_file_position(self.block_start)?;
-        let row_count = self.block_size.get() as usize / channels.row_size();
+        self.read_from(channels, 0)
+    }
 
-        for _ in 0..row_count {
+    /// Read the data from the block starting at a specific sample offset.
+    ///
+    /// For interleaved data, samples are stored row by row:
+    /// [Ch1 S0][Ch2 S0][Ch3 S0][Ch1 S1][Ch2 S1][Ch3 S1]...
+    ///
+    /// To skip samples, we skip entire rows and then read the remaining rows.
+    pub fn read_from<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordStructure<D>,
+        start_sample: u64,
+    ) -> Result<usize, TdmsError> {
+        self.reader.to_file_position(self.block_start)?;
+        let total_row_count = self.block_size.get() as usize / channels.row_size();
+
+        // Calculate how many rows to skip
+        let rows_to_skip = (start_sample as usize).min(total_row_count);
+        let remaining_rows = total_row_count.saturating_sub(rows_to_skip);
+
+        // Skip entire rows by seeking
+        if rows_to_skip > 0 {
+            let skip_bytes = rows_to_skip as i64 * channels.row_size() as i64;
+            self.reader.move_position(skip_bytes)?;
+        }
+
+        for _ in 0..remaining_rows {
             for read_instruction in channels.read_instructions().iter_mut() {
                 match &mut read_instruction.plan {
                     RecordEntryPlan::Read(output) => {
@@ -60,7 +84,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
             }
         }
 
-        Ok(row_count)
+        Ok(remaining_rows)
     }
 }
 

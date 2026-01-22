@@ -52,14 +52,44 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
         channel: &ChannelPath,
         output: &mut [D],
     ) -> Result<(), TdmsError> {
+        self.read_channel_from(channel, 0, output)
+    }
+
+    /// Read a single channel from the tdms file starting at a specific sample position.
+    ///
+    /// channel should provide a path to the channel.
+    /// start is the number of samples to skip before reading.
+    /// output is a mutable slice for the data to be written into.
+    ///
+    /// If there is more data in the file than the size of the slice, we will stop reading at the end of the slice.
+    ///
+    /// # Performance
+    ///
+    /// This method optimizes reading by skipping entire data blocks when possible.
+    /// For example, if you want to start reading at sample 1500 and the first block contains
+    /// 1000 samples, it will skip the entire first block and start reading from sample 500
+    /// of the second block.
+    pub fn read_channel_from<D: TdmsStorageType>(
+        &mut self,
+        channel: &ChannelPath,
+        start: u64,
+        output: &mut [D],
+    ) -> Result<(), TdmsError> {
         let data_positions = self
             .index
             .get_channel_data_positions(channel)
             .ok_or_else(|| TdmsError::MissingObject(channel.path().to_owned()))?;
 
+        let mut samples_to_skip = start;
         let mut samples_read = 0;
 
         for location in data_positions {
+            // Skip entire blocks if possible
+            if samples_to_skip >= location.number_of_samples {
+                samples_to_skip -= location.number_of_samples;
+                continue;
+            }
+
             let block = self
                 .index
                 .get_data_block(location.data_block)
@@ -67,11 +97,16 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
                     TdmsError::DataBlockNotFound(channel.clone(), location.data_block)
                 })?;
 
-            samples_read += block.read_single(
+            // Read from this block with offset
+            samples_read += block.read_single_from(
                 location.channel_index,
+                samples_to_skip,
                 &mut self.file,
                 &mut output[samples_read..],
             )?;
+
+            // After the first partial read, no more samples to skip
+            samples_to_skip = 0;
 
             if samples_read >= output.len() {
                 break;

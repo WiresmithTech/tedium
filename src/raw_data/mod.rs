@@ -241,6 +241,67 @@ impl DataBlock {
         //first is element size, second is total size.
         self.read(reader, &mut [(channel_index, output)])
     }
+
+    /// Read a single channel from the block starting at a specific sample offset.
+    ///
+    /// This method allows skipping a specified number of samples before reading.
+    /// The start_sample parameter indicates how many samples to skip in this block.
+    ///
+    /// Returns the number of samples actually read.
+    pub fn read_single_from<D: TdmsStorageType>(
+        &self,
+        channel_index: usize,
+        start_sample: u64,
+        reader: &mut (impl Read + Seek),
+        output: &mut [D],
+    ) -> Result<usize, TdmsError> {
+        self.read_from(reader, &mut [(channel_index, output)], start_sample)
+    }
+
+    /// Read multiple channels from the block starting at a specific sample offset.
+    ///
+    /// This is the core implementation that supports reading with an offset.
+    fn read_from<'b, D: TdmsStorageType>(
+        &self,
+        reader: &mut (impl Read + Seek),
+        channels_to_read: &'b mut [(usize, &'b mut [D])],
+        start_sample: u64,
+    ) -> Result<usize, TdmsError> {
+        let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
+
+        match (self.layout, self.byte_order) {
+            (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
+                BigEndianReader::from_reader(reader),
+                self.start,
+                self.length,
+            )
+            .read_from(record_plan, start_sample),
+            (DataLayout::Contigious, Endianess::Little) => {
+                MultiChannelContigousReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_from(record_plan, start_sample)
+            }
+            (DataLayout::Interleaved, Endianess::Big) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    BigEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_from(record_plan, start_sample)
+            }
+            (DataLayout::Interleaved, Endianess::Little) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_from(record_plan, start_sample)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

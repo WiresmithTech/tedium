@@ -41,13 +41,37 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
         &mut self,
         mut channels: RecordStructure<D>,
     ) -> Result<usize, TdmsError> {
+        self.read_from(channels, 0)
+    }
+
+    /// Read the data from the block starting at a specific sample offset.
+    ///
+    /// For contiguous data, samples are stored sequentially per channel:
+    /// [Ch1 S0][Ch1 S1]...[Ch1 SN][Ch2 S0][Ch2 S1]...
+    ///
+    /// To skip samples, we calculate the byte offset for each channel and seek accordingly.
+    pub fn read_from<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordStructure<D>,
+        start_sample: u64,
+    ) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
 
         let total_sub_blocks = self.block_size.get() / channels.block_size() as u64;
 
+        // Calculate how many complete sub-blocks to skip
+        let sub_blocks_to_skip = start_sample.min(total_sub_blocks);
+        let remaining_sub_blocks = total_sub_blocks.saturating_sub(sub_blocks_to_skip);
+
+        // Skip entire sub-blocks by seeking
+        if sub_blocks_to_skip > 0 {
+            let skip_bytes = sub_blocks_to_skip as i64 * channels.block_size() as i64;
+            self.reader.move_position(skip_bytes)?;
+        }
+
         let mut length = 0;
 
-        for _ in 0..total_sub_blocks {
+        for _ in 0..remaining_sub_blocks {
             length += self.read_sub_block(&mut channels)?;
         }
 
