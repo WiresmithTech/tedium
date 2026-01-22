@@ -7,11 +7,11 @@ mod interleaved_multi_channel_read;
 mod records;
 mod write;
 
-use records::RecordStructure;
+use records::RecordPlan;
 pub use write::{MultiChannelSlice, WriteBlock};
 
 use self::{
-    contigious_multi_channel_read::MultiChannelContigousReader,
+    contigious_multi_channel_read::MultiChannelContiguousReader,
     interleaved_multi_channel_read::MultiChannelInterleavedReader,
 };
 use crate::{
@@ -92,6 +92,13 @@ impl ChunkSize {
         }
         Ok(())
     }
+}
+
+#[derive(Debug)]
+pub struct BlockReadChannelConfig<'a, T: TdmsStorageType> {
+    pub channel_index: usize,
+    pub samples_to_skip: u64,
+    pub output: &'a mut [T],
 }
 
 /// Represents a block of data inside the file for fast random access.
@@ -192,18 +199,18 @@ impl DataBlock {
         reader: &mut (impl Read + Seek),
         channels_to_read: &'b mut [(usize, &'b mut [D])],
     ) -> Result<usize, TdmsError> {
-        let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
+        let record_plan = RecordPlan::build_record_plan(&self.channels, channels_to_read)?;
 
         match (self.layout, self.byte_order) {
             // No multichannel implementation for contiguous data yet.
-            (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
+            (DataLayout::Contigious, Endianess::Big) => MultiChannelContiguousReader::<_, _>::new(
                 BigEndianReader::from_reader(reader),
                 self.start,
                 self.length,
             )
             .read(record_plan),
             (DataLayout::Contigious, Endianess::Little) => {
-                MultiChannelContigousReader::<_, _>::new(
+                MultiChannelContiguousReader::<_, _>::new(
                     LittleEndianReader::from_reader(reader),
                     self.start,
                     self.length,
@@ -240,6 +247,145 @@ impl DataBlock {
     ) -> Result<usize, TdmsError> {
         //first is element size, second is total size.
         self.read(reader, &mut [(channel_index, output)])
+    }
+
+    /// Read a single channel from the block starting at a specific sample offset.
+    ///
+    /// This method allows skipping a specified number of samples before reading.
+    /// The start_sample parameter indicates how many samples to skip in this block.
+    ///
+    /// Returns the number of samples actually read.
+    pub fn read_single_from<D: TdmsStorageType>(
+        &self,
+        channel_index: usize,
+        start_sample: u64,
+        reader: &mut (impl Read + Seek),
+        output: &mut [D],
+    ) -> Result<usize, TdmsError> {
+        self.read_from(reader, &mut [(channel_index, output)], start_sample)
+    }
+
+    /// Read multiple channels from the block starting at a specific sample offset.
+    ///
+    /// This is the core implementation that supports reading with an offset.
+    /// The start_sample parameter indicates how many samples to skip in this block.
+    pub fn read_from<'b, D: TdmsStorageType>(
+        &self,
+        reader: &mut (impl Read + Seek),
+        channels_to_read: &'b mut [(usize, &'b mut [D])],
+        start_sample: u64,
+    ) -> Result<usize, TdmsError> {
+        let record_plan = RecordPlan::build_record_plan(&self.channels, channels_to_read)?;
+
+        match (self.layout, self.byte_order) {
+            (DataLayout::Contigious, Endianess::Big) => MultiChannelContiguousReader::<_, _>::new(
+                BigEndianReader::from_reader(reader),
+                self.start,
+                self.length,
+            )
+            .read_from(record_plan, start_sample),
+            (DataLayout::Contigious, Endianess::Little) => {
+                MultiChannelContiguousReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_from(record_plan, start_sample)
+            }
+            (DataLayout::Interleaved, Endianess::Big) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    BigEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_from(record_plan, start_sample)
+            }
+            (DataLayout::Interleaved, Endianess::Little) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_from(record_plan, start_sample)
+            }
+        }
+    }
+
+    /// Read multiple channels with per-channel skip amounts.
+    ///
+    /// Each element in channels_to_read is a tuple of (channel_index, output_buffer, skip_amount).
+    /// The skip_amount specifies how many samples to skip for that channel in this block.
+    ///
+    /// This is used when channels have different amounts of data in a block or were
+    /// written in separate blocks, requiring independent skip tracking per channel.
+    pub fn read_with_per_channel_skip<'b, D: TdmsStorageType>(
+        &self,
+        reader: &mut (impl Read + Seek),
+        channels_to_read: &'b mut [BlockReadChannelConfig<'b, D>],
+    ) -> Result<usize, TdmsError> {
+        // Extract skip amounts first (before mutable borrow)
+        let skip_amounts: Vec<u64> = channels_to_read
+            .iter()
+            .map(
+                |BlockReadChannelConfig {
+                     samples_to_skip: skip,
+                     ..
+                 }| *skip,
+            )
+            .collect();
+
+        // Extract the channel indices and buffers for the record plan
+        let mut channel_refs: Vec<(usize, &mut [D])> = channels_to_read
+            .iter_mut()
+            .map(
+                |BlockReadChannelConfig {
+                     channel_index,
+                     output,
+                     ..
+                 }| (*channel_index, &mut output[..]),
+            )
+            .collect();
+
+        let mut record_plan = RecordPlan::build_record_plan(&self.channels, &mut channel_refs)?;
+
+        match (self.layout, self.byte_order) {
+            (DataLayout::Contigious, Endianess::Big) => MultiChannelContiguousReader::<_, _>::new(
+                BigEndianReader::from_reader(reader),
+                self.start,
+                self.length,
+            )
+            .read_with_per_channel_skip(record_plan, &skip_amounts),
+            (DataLayout::Contigious, Endianess::Little) => {
+                MultiChannelContiguousReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_with_per_channel_skip(record_plan, &skip_amounts)
+            }
+            (DataLayout::Interleaved, Endianess::Big) => {
+                for (plan_skip, skip_amount) in record_plan.block_skips_mut().zip(skip_amounts) {
+                    *plan_skip = skip_amount;
+                }
+                MultiChannelInterleavedReader::<_, _>::new(
+                    BigEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read(record_plan)
+            }
+            (DataLayout::Interleaved, Endianess::Little) => {
+                for (plan_skip, skip_amount) in record_plan.block_skips_mut().zip(skip_amounts) {
+                    *plan_skip = skip_amount;
+                }
+                MultiChannelInterleavedReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read(record_plan)
+            }
+        }
     }
 }
 
