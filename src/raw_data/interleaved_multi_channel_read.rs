@@ -86,6 +86,63 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
 
         Ok(remaining_rows)
     }
+
+    /// Read the data from the block with per-channel skip amounts.
+    ///
+    /// For interleaved data, we skip the minimum across all channels (entire rows),
+    /// then read rows while discarding samples for channels that need more skipping.
+    pub fn read_with_per_channel_skip<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordStructure<D>,
+        skip_amounts: &[u64],
+    ) -> Result<usize, TdmsError> {
+        self.reader.to_file_position(self.block_start)?;
+        let total_row_count = self.block_size.get() as usize / channels.row_size();
+
+        // Find minimum skip (we can skip entire rows up to this point)
+        let min_skip = skip_amounts.iter().copied().min().unwrap_or(0) as usize;
+
+        // Skip entire rows
+        if min_skip > 0 {
+            let skip_bytes = min_skip as i64 * channels.row_size() as i64;
+            self.reader.move_position(skip_bytes)?;
+        }
+
+        // Calculate remaining skip per channel
+        let remaining_skips: Vec<usize> = skip_amounts
+            .iter()
+            .map(|&skip| (skip as usize).saturating_sub(min_skip))
+            .collect();
+
+        // Read rows, discarding samples for channels that still need to skip
+        let rows_to_process = total_row_count.saturating_sub(min_skip);
+
+        let mut samples_read = 0;
+        for row in 0..rows_to_process {
+            let mut channel_idx = 0;
+            for read_instruction in channels.read_instructions().iter_mut() {
+                match &mut read_instruction.plan {
+                    RecordEntryPlan::Read(output) => {
+                        let read_value = self.reader.read_value()?;
+
+                        // Only write if we've skipped enough for this channel
+                        if row >= remaining_skips[channel_idx] {
+                            if let Some(value) = output.next() {
+                                *value = read_value;
+                            }
+                        }
+                        channel_idx += 1;
+                    }
+                    RecordEntryPlan::Skip(bytes) => {
+                        self.reader.move_position(*bytes)?;
+                    }
+                };
+            }
+            samples_read += 1;
+        }
+
+        Ok(samples_read)
+    }
 }
 
 #[cfg(test)]

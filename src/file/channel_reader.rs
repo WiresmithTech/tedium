@@ -17,10 +17,8 @@ struct MultiChannelLocation {
 struct ChannelProgress {
     samples_read: usize,
     samples_target: usize,
-    /// Total samples skipped so far (for tracking cumulative position)
-    samples_skipped: u64,
-    /// Original start offset requested
-    start_offset: u64,
+    /// Remaining samples this channel needs to skip
+    samples_to_skip: u64,
 }
 
 impl ChannelProgress {
@@ -28,8 +26,7 @@ impl ChannelProgress {
         Self {
             samples_read: 0,
             samples_target,
-            samples_skipped: 0,
-            start_offset: 0,
+            samples_to_skip: 0,
         }
     }
 
@@ -37,8 +34,7 @@ impl ChannelProgress {
         Self {
             samples_read: 0,
             samples_target,
-            samples_skipped: 0,
-            start_offset,
+            samples_to_skip: start_offset,
         }
     }
 
@@ -48,24 +44,6 @@ impl ChannelProgress {
 
     fn add_samples(&mut self, samples: usize) {
         self.samples_read += samples;
-    }
-
-    /// Calculate how many samples to skip in this block and how many are available to read.
-    /// Does NOT modify state - use `record_skipped_samples` to update after processing.
-    fn calculate_block_skip(&self, block_samples: u64) -> (u64, u64) {
-        let remaining_to_skip = self.start_offset.saturating_sub(self.samples_skipped);
-        if remaining_to_skip >= block_samples {
-            // Skip entire block
-            (block_samples, 0) // (samples_to_skip, samples_available)
-        } else {
-            // Partial skip
-            (remaining_to_skip, block_samples - remaining_to_skip)
-        }
-    }
-
-    /// Record that we've processed (skipped) samples from a block.
-    fn record_skipped_samples(&mut self, samples: u64) {
-        self.samples_skipped += samples;
     }
 }
 
@@ -198,35 +176,45 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
             .collect();
 
         for location in read_plan {
-            // Get the number of samples in this block
-            let block_samples = get_block_samples(&location, &channel_positions);
-
-            // Calculate skip for each channel and check if any need to read from this block
+            // Calculate per-channel skip amounts for this block
+            // We need two lists: one for all channels (for progress tracking)
+            // and one for only channels being read (for the read method)
+            let mut all_channel_skips = Vec::with_capacity(location.channel_indexes.len());
+            let mut read_channel_skips = Vec::new();
+            let mut any_skip_needed = false;
             let mut any_channel_needs_read = false;
-            let mut skip_in_block = 0u64;
 
-            for (ch_idx, progress) in location.channel_indexes.iter().zip(channel_progress.iter()) {
-                if ch_idx.is_some() && !progress.is_complete() {
-                    let (skip, available) = progress.calculate_block_skip(block_samples);
-                    if available > 0 {
-                        any_channel_needs_read = true;
-                        // For uniform start, all channels have the same skip
-                        skip_in_block = skip;
+            for (ch_idx_in_list, (ch_idx_in_block, progress)) in location
+                .channel_indexes
+                .iter()
+                .zip(channel_progress.iter())
+                .enumerate()
+            {
+                if ch_idx_in_block.is_some() && !progress.is_complete() {
+                    // Get the number of samples this channel has in this block
+                    let block_samples =
+                        get_channel_samples_in_block(&location, &channel_positions, ch_idx_in_list);
+                    let skip = progress.samples_to_skip.min(block_samples);
+                    all_channel_skips.push(skip);
+                    read_channel_skips.push(skip);
+
+                    if skip > 0 {
+                        any_skip_needed = true;
                     }
+                    if skip < block_samples {
+                        any_channel_needs_read = true;
+                    }
+                } else {
+                    all_channel_skips.push(0);
                 }
             }
 
             // If no channel needs to read, skip this block entirely
             if !any_channel_needs_read {
-                // Record that we've skipped this block for all channels
-                for (ch_idx, progress) in location
-                    .channel_indexes
-                    .iter()
-                    .zip(channel_progress.iter_mut())
+                // Update skip progress for all channels
+                for (progress, &skip) in channel_progress.iter_mut().zip(all_channel_skips.iter())
                 {
-                    if ch_idx.is_some() {
-                        progress.record_skipped_samples(block_samples);
-                    }
+                    progress.samples_to_skip = progress.samples_to_skip.saturating_sub(skip);
                 }
                 continue;
             }
@@ -243,24 +231,30 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
 
             let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
 
-            let location_samples_read =
-                block.read_from(&mut self.file, &mut channels_to_read, skip_in_block)?;
+            // Use fast path if no skip needed, slow path otherwise
+            let location_samples_read = if any_skip_needed {
+                block.read_with_per_channel_skip(
+                    &mut self.file,
+                    &mut channels_to_read,
+                    &read_channel_skips,
+                )?
+            } else {
+                block.read(&mut self.file, &mut channels_to_read)?
+            };
 
-            // Record that we've processed this block (skipped + read)
-            for (ch_idx, progress) in location
+            // Update progress: record skipped samples and read samples
+            for (ch_idx, (progress, &skip)) in location
                 .channel_indexes
                 .iter()
-                .zip(channel_progress.iter_mut())
+                .zip(channel_progress.iter_mut().zip(all_channel_skips.iter()))
             {
                 if ch_idx.is_some() {
-                    progress.record_skipped_samples(skip_in_block);
+                    progress.samples_to_skip = progress.samples_to_skip.saturating_sub(skip);
+                    progress.add_samples(location_samples_read);
                 }
             }
 
-            let read_complete =
-                update_progress(location, &mut channel_progress, location_samples_read);
-
-            if read_complete {
+            if all_channels_complete(&channel_progress) {
                 break;
             }
         }
@@ -316,22 +310,18 @@ fn all_channels_complete(channel_progress: &[ChannelProgress]) -> bool {
         .all(|progress| progress.is_complete())
 }
 
-/// Get the number of samples in a block for the channels we're reading.
+/// Get the number of samples for a specific channel in a block.
 ///
-/// Since all channels in a block should have the same number of samples,
-/// we just return the first one we find.
-fn get_block_samples(
+/// Returns 0 if the channel is not present in this block.
+fn get_channel_samples_in_block(
     location: &MultiChannelLocation,
     channel_positions: &[&[DataLocation]],
+    channel_idx: usize,
 ) -> u64 {
-    for (ch_idx, block_idx) in location.channel_indexes.iter().enumerate() {
-        if block_idx.is_some() {
-            // Find the data location for this channel in this block
-            for data_loc in channel_positions[ch_idx] {
-                if data_loc.data_block == location.data_block {
-                    return data_loc.number_of_samples;
-                }
-            }
+    // Find the data location for this channel in this block
+    for data_loc in channel_positions[channel_idx] {
+        if data_loc.data_block == location.data_block {
+            return data_loc.number_of_samples;
         }
     }
     0

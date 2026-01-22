@@ -303,6 +303,55 @@ impl DataBlock {
             }
         }
     }
+
+    /// Read multiple channels with per-channel skip amounts.
+    ///
+    /// The skip_amounts slice must contain skip amounts for each channel being read.
+    /// Each element specifies how many samples to skip for that channel in this block.
+    ///
+    /// This is used when channels have different amounts of data in a block or were
+    /// written in separate blocks, requiring independent skip tracking per channel.
+    pub fn read_with_per_channel_skip<'b, D: TdmsStorageType>(
+        &self,
+        reader: &mut (impl Read + Seek),
+        channels_to_read: &'b mut [(usize, &'b mut [D])],
+        skip_amounts: &[u64],
+    ) -> Result<usize, TdmsError> {
+        let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
+
+        match (self.layout, self.byte_order) {
+            (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
+                BigEndianReader::from_reader(reader),
+                self.start,
+                self.length,
+            )
+            .read_with_per_channel_skip(record_plan, skip_amounts),
+            (DataLayout::Contigious, Endianess::Little) => {
+                MultiChannelContigousReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_with_per_channel_skip(record_plan, skip_amounts)
+            }
+            (DataLayout::Interleaved, Endianess::Big) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    BigEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_with_per_channel_skip(record_plan, skip_amounts)
+            }
+            (DataLayout::Interleaved, Endianess::Little) => {
+                MultiChannelInterleavedReader::<_, _>::new(
+                    LittleEndianReader::from_reader(reader),
+                    self.start,
+                    self.length,
+                )
+                .read_with_per_channel_skip(record_plan, skip_amounts)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

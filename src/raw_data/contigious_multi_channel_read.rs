@@ -68,6 +68,68 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
         Ok(length)
     }
 
+    /// Read the data from the block with per-channel skip amounts.
+    ///
+    /// For contiguous data, each channel can skip independently by seeking.
+    pub fn read_with_per_channel_skip<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordStructure<D>,
+        skip_amounts: &[u64],
+    ) -> Result<usize, TdmsError> {
+        self.reader.to_file_position(self.block_start)?;
+
+        let total_sub_blocks = self.block_size.get() / channels.block_size() as u64;
+
+        let mut length = 0;
+
+        for _ in 0..total_sub_blocks {
+            length += self.read_sub_block_with_per_channel_skip(&mut channels, skip_amounts)?;
+        }
+
+        Ok(length)
+    }
+
+    fn read_sub_block_with_per_channel_skip<D: TdmsStorageType>(
+        &mut self,
+        channels: &mut RecordStructure<'_, D>,
+        skip_amounts: &[u64],
+    ) -> Result<usize, TdmsError> {
+        let mut length = 0;
+        let mut skip_idx = 0;
+
+        for read_instruction in channels.read_instructions().iter_mut() {
+            match &mut read_instruction.plan {
+                RecordEntryPlan::Read(output) => {
+                    let skip = skip_amounts[skip_idx].min(read_instruction.length as u64) as usize;
+                    skip_idx += 1;
+
+                    let samples_to_read = read_instruction.length.saturating_sub(skip);
+
+                    // Skip samples by seeking
+                    if skip > 0 {
+                        let skip_bytes = skip as i64 * D::SIZE_BYTES as i64;
+                        self.reader.move_position(skip_bytes)?;
+                    }
+
+                    // Read the remaining samples
+                    for _ in 0..samples_to_read {
+                        let read_value = self.reader.read_value()?;
+                        if let Some(value) = output.next() {
+                            *value = read_value;
+                        }
+                    }
+                    length = samples_to_read;
+                }
+                RecordEntryPlan::Skip(bytes) => {
+                    let skip_bytes = *bytes * read_instruction.length as i64;
+                    self.reader.move_position(skip_bytes)?;
+                }
+            };
+        }
+
+        Ok(length)
+    }
+
     fn read_sub_block_with_offset<D: TdmsStorageType>(
         &mut self,
         channels: &mut RecordStructure<'_, D>,
