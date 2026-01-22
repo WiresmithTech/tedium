@@ -13,15 +13,20 @@ use crate::{error::TdmsError, io::data_types::TdmsStorageType, meta_data::RawDat
 pub enum RecordEntryPlan<'a, T: 'a, I: Iterator<Item = &'a mut T>> {
     // An entry that isn't to be read
     Skip(i64),
-    // Read entry to output index.
-    Read(I),
+    // Read entry to output index. The
+    Read {
+        output: I,
+        /// If set, skip these many samples before reading the entry.
+        /// To be set by the reader rather than generated in the plan.
+        block_skip: u64,
+    },
 }
 
 impl<'a, T: TdmsStorageType, I: Iterator<Item = &'a mut T>> RecordEntryPlan<'a, T, I> {
     fn entry_size_bytes(&self) -> Option<usize> {
         match self {
             RecordEntryPlan::Skip(bytes) => Some(*bytes as usize),
-            RecordEntryPlan::Read(_) => Some(T::SIZE_BYTES),
+            RecordEntryPlan::Read { .. } => Some(T::SIZE_BYTES),
         }
     }
 }
@@ -39,9 +44,9 @@ pub struct RecordEntry<'a, T: 'a> {
 /// ready for reading. Marking sizes and positions of readable
 /// records and their outputs.
 #[derive(Debug)]
-pub struct RecordStructure<'a, T>(Vec<RecordEntry<'a, T>>);
+pub struct RecordPlan<'a, T>(Vec<RecordEntry<'a, T>>);
 
-impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
+impl<'o, 'b: 'o, T: TdmsStorageType> RecordPlan<'o, T> {
     /// Build a record structure for the channels specified.
     ///
     /// `channels` - This is the structure of the data segment.
@@ -51,7 +56,7 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     pub fn build_record_plan(
         channels: &[RawDataMeta],
         outputs: &'b mut [(usize, &'b mut [T])],
-    ) -> Result<RecordStructure<'o, T>, TdmsError> {
+    ) -> Result<RecordPlan<'o, T>, TdmsError> {
         let mut plan = Self::build_base_record(channels);
 
         validate_types_match(outputs, channels)?;
@@ -63,6 +68,28 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     /// Get the read instructions for the record.
     pub fn read_instructions<'a>(&'a mut self) -> &'a mut [RecordEntry<'o, T>] {
         &mut self.0[..]
+    }
+
+    /// Get the block skips per read channel in the read plan.
+    pub fn block_skips(&self) -> impl Iterator<Item = u64> + '_ {
+        self.0.iter().filter_map(|entry| {
+            if let RecordEntryPlan::Read { block_skip, .. } = &entry.plan {
+                Some(*block_skip)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Get the block skips as mut.
+    pub fn block_skips_mut(&mut self) -> impl Iterator<Item = &mut u64> + '_ {
+        self.0.iter_mut().filter_map(|entry| {
+            if let RecordEntryPlan::Read { block_skip, .. } = &mut entry.plan {
+                Some(block_skip)
+            } else {
+                None
+            }
+        })
     }
 
     /// Get the size of a single record in bytes.
@@ -113,7 +140,10 @@ impl<'o, 'b: 'o, T: TdmsStorageType> RecordStructure<'o, T> {
     /// Set which records should be read in the plan.
     fn set_readable_records(&mut self, outputs: &'b mut [(usize, &'b mut [T])]) {
         for output in outputs {
-            self.0[output.0].plan = RecordEntryPlan::Read(output.1.iter_mut());
+            self.0[output.0].plan = RecordEntryPlan::Read {
+                output: output.1.iter_mut(),
+                block_skip: 0,
+            };
         }
     }
 
@@ -161,14 +191,13 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(0, &mut out1), (1, &mut out2)];
 
-        let read_plan =
-            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.0.len(), 2);
         assert_eq!(read_plan.0[0].length, 1000);
         assert_eq!(read_plan.0[1].length, 1000);
-        assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Read(_)));
-        assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Read(_)));
+        assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Read { .. }));
+        assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Read { .. }));
     }
 
     #[test]
@@ -189,13 +218,12 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(1, &mut out1)];
 
-        let read_plan =
-            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.0.len(), 2);
         assert_eq!(read_plan.0[1].length, 1000);
         assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Skip(8)));
-        assert!(matches!(read_plan.0[1].plan, RecordEntryPlan::Read(_)));
+        assert!(matches!(read_plan.0[1].plan, RecordEntryPlan::Read { .. }));
     }
 
     #[test]
@@ -216,8 +244,7 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [u32])> = vec![(1, &mut out1)];
 
-        let read_plan_result =
-            RecordStructure::<u32>::build_record_plan(&channels, &mut outputs[..]);
+        let read_plan_result = RecordPlan::<u32>::build_record_plan(&channels, &mut outputs[..]);
 
         assert!(matches!(
             read_plan_result,
@@ -246,8 +273,7 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(1, &mut out1)];
 
-        let read_plan_result =
-            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]);
+        let read_plan_result = RecordPlan::<f64>::build_record_plan(&channels, &mut outputs[..]);
 
         assert!(matches!(read_plan_result, Ok(_)));
     }
@@ -276,13 +302,12 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [f64])> = vec![(1, &mut out1)];
 
-        let read_plan =
-            RecordStructure::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.0.len(), 2);
         assert_eq!(read_plan.0[1].length, 1000);
         assert!(matches!(read_plan.0[0].plan, RecordEntryPlan::Skip(12)));
-        assert!(matches!(read_plan.0[1].plan, RecordEntryPlan::Read(_)));
+        assert!(matches!(read_plan.0[1].plan, RecordEntryPlan::Read { .. }));
     }
 
     #[test]
@@ -308,8 +333,7 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [i32])> = vec![(1, &mut out1)];
 
-        let read_plan =
-            RecordStructure::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
+        let read_plan = RecordPlan::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.row_size(), 20);
     }
@@ -337,8 +361,7 @@ mod tests {
 
         let mut outputs: Vec<(usize, &mut [i32])> = vec![(1, &mut out1)];
 
-        let read_plan =
-            RecordStructure::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
+        let read_plan = RecordPlan::<i32>::build_record_plan(&channels, &mut outputs[..]).unwrap();
 
         assert_eq!(read_plan.block_size(), 20000);
     }

@@ -119,7 +119,7 @@ impl Display for DataType {
 
 type StorageResult<T> = std::result::Result<T, TdmsError>;
 
-pub trait TdmsStorageType: Sized {
+pub trait TdmsStorageType: Sized + 'static {
     /// The [`DataType`] that can be read as this storage type.
     const SUPPORTED_TYPES: &'static [DataType];
     /// The [`DataType`] that this storage type is naturally written as.
