@@ -1,7 +1,7 @@
 //! Tests for reading channels with start position offset
 
 use std::path::Path;
-use tedium::paths::ChannelPath;
+use tedium::ChannelPath;
 use tedium::TdmsFile;
 
 mod common;
@@ -93,10 +93,10 @@ fn test_read_channel_from_at_boundary() {
         let mut offset_read = vec![0.0f64; 10];
         file2.read_channel_from(&channel, start_pos, &mut offset_read).unwrap();
 
-        let end_pos = (start_pos + 10).min(full_read.len());
+        let end_pos = (start_pos as usize + 10).min(full_read.len());
         assert_eq!(
-            &full_read[start_pos..end_pos],
-            &offset_read[..(end_pos - start_pos)],
+            &full_read[start_pos as usize..end_pos],
+            &offset_read[..(end_pos - start_pos as usize)],
             "Reading from position {} should match", start_pos
         );
     }
