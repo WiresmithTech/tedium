@@ -7,7 +7,7 @@ mod interleaved_multi_channel_read;
 mod records;
 mod write;
 
-use records::RecordStructure;
+use records::RecordPlan;
 pub use write::{MultiChannelSlice, WriteBlock};
 
 use self::{
@@ -192,7 +192,7 @@ impl DataBlock {
         reader: &mut (impl Read + Seek),
         channels_to_read: &'b mut [(usize, &'b mut [D])],
     ) -> Result<usize, TdmsError> {
-        let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
+        let record_plan = RecordPlan::build_record_plan(&self.channels, channels_to_read)?;
 
         match (self.layout, self.byte_order) {
             // No multichannel implementation for contiguous data yet.
@@ -268,7 +268,7 @@ impl DataBlock {
         channels_to_read: &'b mut [(usize, &'b mut [D])],
         start_sample: u64,
     ) -> Result<usize, TdmsError> {
-        let record_plan = RecordStructure::build_record_plan(&self.channels, channels_to_read)?;
+        let record_plan = RecordPlan::build_record_plan(&self.channels, channels_to_read)?;
 
         match (self.layout, self.byte_order) {
             (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
@@ -325,7 +325,7 @@ impl DataBlock {
             .map(|(idx, buf, _skip)| (*idx, &mut buf[..]))
             .collect();
 
-        let record_plan = RecordStructure::build_record_plan(&self.channels, &mut channel_refs)?;
+        let record_plan = RecordPlan::build_record_plan(&self.channels, &mut channel_refs)?;
 
         match (self.layout, self.byte_order) {
             (DataLayout::Contigious, Endianess::Big) => MultiChannelContigousReader::<_, _>::new(
