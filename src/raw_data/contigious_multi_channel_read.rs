@@ -80,13 +80,13 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
                     // Skip the specified number of samples at the start
                     let samples_to_skip = start_sample.min(read_instruction.length as u64) as usize;
                     let samples_to_read = read_instruction.length.saturating_sub(samples_to_skip);
-                    
+
                     // Skip samples by seeking
                     if samples_to_skip > 0 {
                         let skip_bytes = samples_to_skip as i64 * D::SIZE_BYTES as i64;
                         self.reader.move_position(skip_bytes)?;
                     }
-                    
+
                     // Read the remaining samples
                     for _ in 0..samples_to_read {
                         let read_value = self.reader.read_value()?;
