@@ -11,11 +11,11 @@ mod writing;
 
 use std::collections::BTreeMap;
 
+use crate::PropertyValue;
 use crate::error::TdmsError;
 use crate::meta_data::{ObjectMetaData, RawDataIndex, RawDataMeta};
 use crate::paths::{ChannelPath, PropertyPath};
 use crate::raw_data::DataBlock;
-use crate::PropertyValue;
 
 /// A store for a given channel point to the data block with its data and the index within that.
 #[derive(Debug, Clone, PartialEq, Eq)]

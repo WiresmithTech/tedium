@@ -1,5 +1,5 @@
 use crate::paths::ChannelPath;
-use crate::{error::TdmsError, index::DataLocation, io::data_types::TdmsStorageType, TdmsFile};
+use crate::{TdmsFile, error::TdmsError, index::DataLocation, io::data_types::TdmsStorageType};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 struct MultiChannelLocation {

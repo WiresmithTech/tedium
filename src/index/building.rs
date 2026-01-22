@@ -208,6 +208,7 @@ impl super::Index {
 
 #[cfg(test)]
 mod tests {
+    use crate::PropertyValue;
     use crate::io::data_types::DataType;
     use crate::meta_data::MetaData;
     use crate::meta_data::ObjectMetaData;
@@ -216,7 +217,6 @@ mod tests {
     use crate::meta_data::ToC;
     use crate::paths::{ChannelPath, PropertyPath};
     use crate::raw_data::{DataLayout, Endianess};
-    use crate::PropertyValue;
 
     use super::super::Index;
     use super::*;

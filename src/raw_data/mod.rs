@@ -20,7 +20,7 @@ use crate::{
         data_types::TdmsStorageType,
         reader::{BigEndianReader, LittleEndianReader, TdmsReader},
     },
-    meta_data::{RawDataMeta, Segment, LEAD_IN_BYTES},
+    meta_data::{LEAD_IN_BYTES, RawDataMeta, Segment},
 };
 use std::io::{Read, Seek};
 use std::num::NonZeroU64;
@@ -247,9 +247,9 @@ impl DataBlock {
 mod read_tests {
 
     use super::*;
+    use crate::PropertyValue;
     use crate::io::data_types::DataType;
     use crate::meta_data::{MetaData, ObjectMetaData, RawDataIndex, ToC};
-    use crate::PropertyValue;
 
     fn dummy_segment() -> Segment {
         Segment {

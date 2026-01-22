@@ -226,12 +226,16 @@ impl ChannelPath {
 
     /// Get the group name for the channel.
     pub fn group_name(&self) -> &str {
-        self.0.group_name().expect("ChannelPath must always have a group name")
+        self.0
+            .group_name()
+            .expect("ChannelPath must always have a group name")
     }
 
     /// Get the channel name for the channel.
     pub fn channel_name(&self) -> &str {
-        self.0.channel_name().expect("ChannelPath must always have a channel name")
+        self.0
+            .channel_name()
+            .expect("ChannelPath must always have a channel name")
     }
 }
 

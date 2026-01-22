@@ -1,4 +1,4 @@
-use criterion::{criterion_group, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group};
 use std::io::Cursor;
 use tedium::{ChannelPath, DataLayout, TdmsFile};
 

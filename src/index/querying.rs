@@ -41,12 +41,12 @@ impl Index {
 mod tests {
 
     use super::*;
+    use crate::PropertyValue;
     use crate::meta_data::MetaData;
     use crate::meta_data::ObjectMetaData;
     use crate::meta_data::RawDataIndex;
     use crate::meta_data::Segment;
     use crate::meta_data::ToC;
-    use crate::PropertyValue;
 
     /// Generate a test file with no data but a few objects.
     ///

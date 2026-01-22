@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::meta_data::Segment;
-use crate::{error::TdmsError, PropertyPath, PropertyValue};
-use crate::{index::Index, ChannelPath};
+use crate::{ChannelPath, index::Index};
+use crate::{PropertyPath, PropertyValue, error::TdmsError};
 use crate::{
     io::writer::{LittleEndianWriter, TdmsWriter},
     paths::path_group_name,

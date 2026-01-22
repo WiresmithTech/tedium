@@ -49,9 +49,9 @@ impl Index {
 mod tests {
 
     use crate::{
+        PropertyValue,
         io::data_types::DataType,
         meta_data::{MetaData, ObjectMetaData, RawDataMeta, Segment, ToC},
-        PropertyValue,
     };
 
     use super::*;

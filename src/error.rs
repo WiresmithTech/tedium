@@ -29,9 +29,13 @@ pub enum TdmsError {
     DataTypeMismatch(DataType, DataType),
     #[error("Attempted to read past the end of the file")]
     EndOfFile,
-    #[error("The start address for the next segment is invalid. The address overflowed. The file is likely corrupt.")]
+    #[error(
+        "The start address for the next segment is invalid. The address overflowed. The file is likely corrupt."
+    )]
     SegmentAddressOverflow,
-    #[error("The segment ToC expects a data block but no data channels are present. The file is likely corrupt.")]
+    #[error(
+        "The segment ToC expects a data block but no data channels are present. The file is likely corrupt."
+    )]
     SegmentTocDataBlockWithoutDataChannels,
     #[error("Attempted to parse an invalid object path. {0}")]
     InvalidObjectPath(String),
@@ -51,11 +55,17 @@ pub enum TdmsError {
     ZeroLengthDataBlock,
     #[error("A data block has no active channels. The file is likely to be corrupted.")]
     NoActiveChannelsInDataBlock,
-    #[error("The data block wants to use the same data type as previous, but no previous type is available.")]
+    #[error(
+        "The data block wants to use the same data type as previous, but no previous type is available."
+    )]
     NoPreviousType,
-    #[error("The raw data offset is greater than the next segment offset which is an invalid condition. The file is likely corrupt")]
+    #[error(
+        "The raw data offset is greater than the next segment offset which is an invalid condition. The file is likely corrupt"
+    )]
     InvalidRawOffset,
-    #[error("The calculated size for a data chunk is grater than 2^64 bytes. This isn't allowed and probably indicates a corrupt file.")]
+    #[error(
+        "The calculated size for a data chunk is grater than 2^64 bytes. This isn't allowed and probably indicates a corrupt file."
+    )]
     ChunkSizeOverflow,
     #[cfg(feature = "chrono")]
     #[error("Failed to convert LVTime to chrono::DateTime")]
