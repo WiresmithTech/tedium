@@ -331,12 +331,16 @@ fn test_read_channels_from_separate_blocks() {
     // Ch2 should skip 500 in Block 1, read samples 500-599 from Block 1
     assert_eq!(
         &output1[0..10],
-        &[500.0, 501.0, 502.0, 503.0, 504.0, 505.0, 506.0, 507.0, 508.0, 509.0],
+        &[
+            500.0, 501.0, 502.0, 503.0, 504.0, 505.0, 506.0, 507.0, 508.0, 509.0
+        ],
         "Ch1 should read from position 500 in its data stream"
     );
     assert_eq!(
         &output2[0..10],
-        &[1500.0, 1501.0, 1502.0, 1503.0, 1504.0, 1505.0, 1506.0, 1507.0, 1508.0, 1509.0],
+        &[
+            1500.0, 1501.0, 1502.0, 1503.0, 1504.0, 1505.0, 1506.0, 1507.0, 1508.0, 1509.0
+        ],
         "Ch2 should read from position 500 in its data stream (which is 1500 in the original data)"
     );
 }
