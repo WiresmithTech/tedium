@@ -126,7 +126,9 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
                         let read_value = self.reader.read_value()?;
 
                         // Only write if we've skipped enough for this channel
-                        if row >= remaining_skips[channel_idx] && let Some(value) = output.next() {
+                        if row >= remaining_skips[channel_idx]
+                            && let Some(value) = output.next()
+                        {
                             *value = read_value;
                         }
                         channel_idx += 1;
