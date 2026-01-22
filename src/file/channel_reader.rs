@@ -234,7 +234,8 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
                     get_block_read_data_with_skip(&location, output, &channel_progress, &read_channel_skips);
                 block.read_with_per_channel_skip(&mut self.file, &mut channels_with_skip)?
             } else {
-                let mut channels_to_read = get_block_read_data(&location, output, &channel_progress);
+                let mut channels_to_read =
+                    get_block_read_data(&location, output, &channel_progress);
                 block.read(&mut self.file, &mut channels_to_read)?
             };
 
