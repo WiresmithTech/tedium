@@ -1,4 +1,5 @@
 use crate::paths::ChannelPath;
+use crate::raw_data::BlockReadChannelConfig;
 use crate::{TdmsFile, error::TdmsError, index::DataLocation, io::data_types::TdmsStorageType};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -180,7 +181,10 @@ impl<F: std::io::Read + std::io::Seek> TdmsFile<F> {
             };
 
             // Update progress
-            for (plan, progress) in location.channel_indexes.iter().zip(channel_progress.iter_mut())
+            for (plan, progress) in location
+                .channel_indexes
+                .iter()
+                .zip(channel_progress.iter_mut())
             {
                 if plan.is_some() {
                     progress.add_samples(location_samples_read);
@@ -224,7 +228,7 @@ fn get_block_read_data_with_skip<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
     location: &'a BlockRead,
     output: &'b mut [&'c mut [D]],
     channel_progress: &[ChannelProgress],
-) -> Vec<(usize, &'o mut [D], u64)> {
+) -> Vec<BlockReadChannelConfig<'b, D>> {
     location
         .channel_indexes
         .iter()
@@ -235,11 +239,11 @@ fn get_block_read_data_with_skip<'a, 'b: 'o, 'c: 'o, 'o, D: TdmsStorageType>(
                 // If we have hit our target, ignore this channel.
                 (Some(_), progress) if progress.is_complete() => None,
                 // More to read - include this channel with its skip amount.
-                (Some(plan), progress) => Some((
-                    plan.index,
-                    &mut output[progress.samples_read..],
-                    plan.samples_to_skip,
-                )),
+                (Some(plan), progress) => Some(BlockReadChannelConfig {
+                    channel_index: plan.index,
+                    output: &mut output[progress.samples_read..],
+                    samples_to_skip: plan.samples_to_skip,
+                }),
                 _ => None,
             }
         })
@@ -501,7 +505,10 @@ mod tests {
         ];
 
         // Skip 500 for both channels - partial skip on first block
-        let plan = read_plan(&[&channel_location_1[..], &channel_location_2[..]], &[500, 500]);
+        let plan = read_plan(
+            &[&channel_location_1[..], &channel_location_2[..]],
+            &[500, 500],
+        );
 
         let expected_plan = vec![
             BlockRead {

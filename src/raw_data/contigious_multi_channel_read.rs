@@ -99,16 +99,17 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
 
         // Calculate per-channel sub-blocks to skip and remainders
         let sub_block_length = channels.read_instructions()[0].length as u64;
-        let mut sub_blocks_to_skip: Vec<u64> = skip_amounts
+        let sub_blocks_to_skip: Vec<u64> = skip_amounts
             .iter()
             .map(|&skip| skip / sub_block_length)
             .collect();
-        let mut remainder_skips: Vec<u64> = skip_amounts
+        let remainder_skips: Vec<u64> = skip_amounts
             .iter()
             .map(|&skip| skip % sub_block_length)
             .collect();
 
         let mut length = 0;
+        let mut sub_block_skips = Vec::with_capacity(skip_amounts.len());
 
         for sub_block_idx in 0..total_sub_blocks {
             // Check if any channel needs to read from this sub-block
@@ -120,7 +121,7 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
                 self.reader.move_position(skip_bytes)?;
             } else {
                 // Build skip amounts for this sub-block
-                let mut sub_block_skips = Vec::new();
+                sub_block_skips.clear();
                 for (idx, &blocks_to_skip) in sub_blocks_to_skip.iter().enumerate() {
                     if sub_block_idx == blocks_to_skip {
                         // First sub-block to read for this channel - use remainder
@@ -133,7 +134,8 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
                         sub_block_skips.push(0);
                     }
                 }
-                length += self.read_sub_block_with_per_channel_skip(&mut channels, &sub_block_skips)?;
+                length +=
+                    self.read_sub_block_with_per_channel_skip(&mut channels, &sub_block_skips)?;
             }
         }
 
@@ -264,8 +266,7 @@ mod tests {
         );
         let mut output: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output[..])];
-        let read_plan =
-            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output, vec![0.0, 1.0, 2.0]);
     }
@@ -284,8 +285,7 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan =
-            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
 
         let output_2_start = length * 2.0;
         reader.read(read_plan).unwrap();
@@ -320,8 +320,7 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan =
-            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
 
         reader.read(read_plan).unwrap();
         assert_eq!(output_1, vec![0.0, 1.0, 8.0]);
@@ -342,8 +341,7 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 2];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan =
-            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
 
         reader.read(read_plan).unwrap();
 
@@ -366,8 +364,7 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan =
-            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
 
         // Skip first 2 samples from each channel
         reader.read_from(read_plan, 2).unwrap();
@@ -376,7 +373,11 @@ mod tests {
         assert_eq!(output_1, vec![2.0, 3.0, 4.0]);
         assert_eq!(
             output_2,
-            vec![output_2_start + 2.0, output_2_start + 3.0, output_2_start + 4.0]
+            vec![
+                output_2_start + 2.0,
+                output_2_start + 3.0,
+                output_2_start + 4.0
+            ]
         );
     }
 
@@ -398,8 +399,7 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output_1[..]), (1usize, &mut output_2[..])];
-        let read_plan =
-            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
 
         // Skip first sample from each channel
         reader.read_from(read_plan, 1).unwrap();

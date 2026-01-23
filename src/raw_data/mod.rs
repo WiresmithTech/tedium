@@ -94,6 +94,13 @@ impl ChunkSize {
     }
 }
 
+#[derive(Debug)]
+pub struct BlockReadChannelConfig<'a, T: TdmsStorageType> {
+    pub channel_index: usize,
+    pub samples_to_skip: u64,
+    pub output: &'a mut [T],
+}
+
 /// Represents a block of data inside the file for fast random access.
 #[derive(Clone, PartialEq, Debug)]
 pub struct DataBlock {
@@ -314,15 +321,29 @@ impl DataBlock {
     pub fn read_with_per_channel_skip<'b, D: TdmsStorageType>(
         &self,
         reader: &mut (impl Read + Seek),
-        channels_to_read: &'b mut [(usize, &'b mut [D], u64)],
+        channels_to_read: &'b mut [BlockReadChannelConfig<'b, D>],
     ) -> Result<usize, TdmsError> {
         // Extract skip amounts first (before mutable borrow)
-        let skip_amounts: Vec<u64> = channels_to_read.iter().map(|(_, _, skip)| *skip).collect();
+        let skip_amounts: Vec<u64> = channels_to_read
+            .iter()
+            .map(
+                |BlockReadChannelConfig {
+                     samples_to_skip: skip,
+                     ..
+                 }| *skip,
+            )
+            .collect();
 
         // Extract the channel indices and buffers for the record plan
         let mut channel_refs: Vec<(usize, &mut [D])> = channels_to_read
             .iter_mut()
-            .map(|(idx, buf, _skip)| (*idx, &mut buf[..]))
+            .map(
+                |BlockReadChannelConfig {
+                     channel_index,
+                     output,
+                     ..
+                 }| (*channel_index, &mut output[..]),
+            )
             .collect();
 
         let record_plan = RecordPlan::build_record_plan(&self.channels, &mut channel_refs)?;
