@@ -2,7 +2,7 @@
 //!
 //!
 
-use super::records::{RecordEntryPlan, RecordStructure};
+use super::records::{RecordEntryPlan, RecordPlan};
 use crate::io::reader::TdmsReader;
 use crate::{error::TdmsError, io::data_types::TdmsStorageType};
 use std::num::NonZeroU64;
@@ -39,12 +39,36 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
     /// allows for different lengths but all clients have I have seen do not.
     pub fn read<D: TdmsStorageType>(
         &mut self,
-        mut channels: RecordStructure<D>,
+        channels: RecordPlan<D>,
+    ) -> Result<usize, TdmsError> {
+        self.read_from(channels, 0)
+    }
+
+    /// Read the data from the block starting at a specific sample offset.
+    ///
+    /// For interleaved data, samples are stored row by row:
+    /// [Ch1 S0][Ch2 S0][Ch3 S0][Ch1 S1][Ch2 S1][Ch3 S1]...
+    ///
+    /// To skip samples, we skip entire rows and then read the remaining rows.
+    pub fn read_from<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordPlan<D>,
+        start_sample: u64,
     ) -> Result<usize, TdmsError> {
         self.reader.to_file_position(self.block_start)?;
-        let row_count = self.block_size.get() as usize / channels.row_size();
+        let total_row_count = self.block_size.get() as usize / channels.row_size();
 
-        for _ in 0..row_count {
+        // Calculate how many rows to skip
+        let rows_to_skip = (start_sample as usize).min(total_row_count);
+        let remaining_rows = total_row_count.saturating_sub(rows_to_skip);
+
+        // Skip entire rows by seeking
+        if rows_to_skip > 0 {
+            let skip_bytes = rows_to_skip as i64 * channels.row_size() as i64;
+            self.reader.move_position(skip_bytes)?;
+        }
+
+        for _ in 0..remaining_rows {
             for read_instruction in channels.read_instructions().iter_mut() {
                 match &mut read_instruction.plan {
                     RecordEntryPlan::Read(output) => {
@@ -60,7 +84,64 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelInterleavedReader<R, T> {
             }
         }
 
-        Ok(row_count)
+        Ok(remaining_rows)
+    }
+
+    /// Read the data from the block with per-channel skip amounts.
+    ///
+    /// For interleaved data, we skip the minimum across all channels (entire rows),
+    /// then read rows while discarding samples for channels that need more skipping.
+    pub fn read_with_per_channel_skip<D: TdmsStorageType>(
+        &mut self,
+        mut channels: RecordPlan<D>,
+        skip_amounts: &[u64],
+    ) -> Result<usize, TdmsError> {
+        self.reader.to_file_position(self.block_start)?;
+        let total_row_count = self.block_size.get() as usize / channels.row_size();
+
+        // Find minimum skip (we can skip entire rows up to this point)
+        let min_skip = skip_amounts.iter().copied().min().unwrap_or(0) as usize;
+
+        // Skip entire rows
+        if min_skip > 0 {
+            let skip_bytes = min_skip as i64 * channels.row_size() as i64;
+            self.reader.move_position(skip_bytes)?;
+        }
+
+        // Calculate remaining skip per channel
+        let remaining_skips: Vec<usize> = skip_amounts
+            .iter()
+            .map(|&skip| (skip as usize).saturating_sub(min_skip))
+            .collect();
+
+        // Read rows, discarding samples for channels that still need to skip
+        let rows_to_process = total_row_count.saturating_sub(min_skip);
+
+        let mut samples_read = 0;
+        for row in 0..rows_to_process {
+            let mut channel_idx = 0;
+            for read_instruction in channels.read_instructions().iter_mut() {
+                match &mut read_instruction.plan {
+                    RecordEntryPlan::Read(output) => {
+                        let read_value = self.reader.read_value()?;
+
+                        // Only write if we've skipped enough for this channel
+                        if row >= remaining_skips[channel_idx]
+                            && let Some(value) = output.next()
+                        {
+                            *value = read_value;
+                        }
+                        channel_idx += 1;
+                    }
+                    RecordEntryPlan::Skip(bytes) => {
+                        self.reader.move_position(*bytes)?;
+                    }
+                };
+            }
+            samples_read += 1;
+        }
+
+        Ok(samples_read)
     }
 }
 
@@ -106,8 +187,7 @@ mod tests {
         );
         let mut output: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output[..])];
-        let read_plan =
-            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output, vec![0.0, 2.0, 4.0]);
     }
@@ -125,8 +205,7 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 3];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan =
-            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output_1, vec![0.0, 4.0, 8.0]);
         assert_eq!(output_2, vec![2.0, 6.0, 10.0]);
@@ -145,10 +224,33 @@ mod tests {
         let mut output_1: Vec<f64> = vec![0.0; 3];
         let mut output_2: Vec<f64> = vec![0.0; 2];
         let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
-        let read_plan =
-            RecordStructure::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
         reader.read(read_plan).unwrap();
         assert_eq!(output_1, vec![0.0, 4.0, 8.0]);
         assert_eq!(output_2, vec![2.0, 6.0]);
+    }
+
+    #[test]
+    fn read_data_interleaved_with_skip() {
+        let mut buffer = create_test_buffer();
+        let meta = create_test_meta_data(4);
+
+        let mut reader = MultiChannelInterleavedReader::<_, _>::new(
+            BigEndianReader::from_reader(&mut buffer),
+            0,
+            800.try_into().unwrap(),
+        );
+        let mut output_1: Vec<f64> = vec![0.0; 3];
+        let mut output_2: Vec<f64> = vec![0.0; 3];
+        let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
+        let read_plan = RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+
+        // Skip first 2 rows (samples)
+        reader.read_from(read_plan, 2).unwrap();
+
+        // Interleaved: [0,1,2,3][4,5,6,7][8,9,10,11]...
+        // After skipping 2 rows: starts at row 2 which is [8,9,10,11]
+        assert_eq!(output_1, vec![8.0, 12.0, 16.0]);
+        assert_eq!(output_2, vec![10.0, 14.0, 18.0]);
     }
 }
