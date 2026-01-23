@@ -232,4 +232,30 @@ mod tests {
         assert_eq!(output_1, vec![0.0, 4.0, 8.0]);
         assert_eq!(output_2, vec![2.0, 6.0]);
     }
+
+    #[test]
+    fn read_data_interleaved_with_skip() {
+        let mut buffer = create_test_buffer();
+        let meta = create_test_meta_data(4);
+
+        let mut reader = MultiChannelInterleavedReader::<_, _>::new(
+            BigEndianReader::from_reader(&mut buffer),
+            0,
+            800.try_into().unwrap(),
+        );
+        let mut output_1: Vec<f64> = vec![0.0; 3];
+        let mut output_2: Vec<f64> = vec![0.0; 3];
+        let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
+        let read_plan =
+            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+
+        // Skip first 2 rows (samples)
+        reader.read_from(read_plan, 2).unwrap();
+
+        // Interleaved: [0,1,2,3][4,5,6,7][8,9,10,11]...
+        // After skipping 2 rows: starts at row 2 which is [8,9,10,11]
+        assert_eq!(output_1, vec![8.0, 12.0, 16.0]);
+        assert_eq!(output_2, vec![10.0, 14.0, 18.0]);
+    }
+
 }

@@ -41,6 +41,8 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
         &mut self,
         channels: RecordPlan<D>,
     ) -> Result<usize, TdmsError> {
+        // Since the skip is highly efficient for contiguous data, we can use a
+        // single implementation.
         self.read_from(channels, 0)
     }
 
@@ -157,32 +159,6 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
                         }
                     }
                     length = samples_to_read;
-                }
-                RecordEntryPlan::Skip(bytes) => {
-                    let skip_bytes = *bytes * read_instruction.length as i64;
-                    self.reader.move_position(skip_bytes)?;
-                }
-            };
-        }
-
-        Ok(length)
-    }
-
-    fn read_sub_block<D: TdmsStorageType>(
-        &mut self,
-        channels: &mut RecordPlan<'_, D>,
-    ) -> Result<usize, TdmsError> {
-        let mut length = 0;
-        for read_instruction in channels.read_instructions().iter_mut() {
-            match &mut read_instruction.plan {
-                RecordEntryPlan::Read(output) => {
-                    for _ in 0..read_instruction.length {
-                        let read_value = self.reader.read_value()?;
-                        if let Some(value) = output.next() {
-                            *value = read_value;
-                        }
-                    }
-                    length = read_instruction.length;
                 }
                 RecordEntryPlan::Skip(bytes) => {
                     let skip_bytes = *bytes * read_instruction.length as i64;
@@ -325,5 +301,65 @@ mod tests {
         let output2_start = length * 2.0;
         assert_eq!(output_1, vec![0.0, 1.0, 2.0]);
         assert_eq!(output_2, vec![output2_start, output2_start + 1.0]);
+    }
+
+    #[test]
+    fn read_data_contigious_with_skip() {
+        let mut buffer = create_test_buffer();
+        let meta = create_test_meta_data(4);
+        let length = meta.first().unwrap().number_of_values as f64;
+
+        let mut reader = MultiChannelContigousReader::<_, _>::new(
+            BigEndianReader::from_reader(&mut buffer),
+            0,
+            800.try_into().unwrap(),
+        );
+        let mut output_1: Vec<f64> = vec![0.0; 3];
+        let mut output_2: Vec<f64> = vec![0.0; 3];
+        let mut channels = vec![(0usize, &mut output_1[..]), (2usize, &mut output_2[..])];
+        let read_plan =
+            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+
+        // Skip first 2 samples from each channel
+        reader.read_from(read_plan, 2).unwrap();
+
+        let output_2_start = length * 2.0;
+        assert_eq!(output_1, vec![2.0, 3.0, 4.0]);
+        assert_eq!(
+            output_2,
+            vec![output_2_start + 2.0, output_2_start + 3.0, output_2_start + 4.0]
+        );
+    }
+
+    #[test]
+    fn read_data_contigious_with_skip_and_multiple_blocks() {
+        let mut buffer = create_test_buffer();
+        let mut meta = create_test_meta_data(2);
+
+        // Set up for multiple sub-blocks
+        for channel in meta.iter_mut() {
+            channel.number_of_values = 3;
+        }
+
+        let mut reader = MultiChannelContigousReader::<_, _>::new(
+            BigEndianReader::from_reader(&mut buffer),
+            0,
+            800.try_into().unwrap(),
+        );
+        let mut output_1: Vec<f64> = vec![0.0; 3];
+        let mut output_2: Vec<f64> = vec![0.0; 3];
+        let mut channels = vec![(0usize, &mut output_1[..]), (1usize, &mut output_2[..])];
+        let read_plan =
+            RecordPlan::<f64>::build_record_plan(&meta, &mut channels[..]).unwrap();
+
+        // Skip first sample from each channel
+        reader.read_from(read_plan, 1).unwrap();
+
+        // ch1, block 1: 0, 1, 2
+        // ch2, block 1: 3, 4, 5
+        // ch1, block 2: 6, 7, 8
+        // ch2, block 2: 9, 10, 11
+        assert_eq!(output_1, vec![1.0, 2.0, 6.0]);
+        assert_eq!(output_2, vec![4.0, 5.0, 9.0]);
     }
 }
