@@ -61,10 +61,25 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
 
         let total_sub_blocks = self.block_size.get() / channels.block_size() as u64;
 
+        // Calculate how many complete sub-blocks to skip and the remainder
+        let sub_block_length = channels.read_instructions()[0].length as u64;
+        let sub_blocks_to_skip = start_sample / sub_block_length;
+        let remainder_skip = start_sample % sub_block_length;
+
         let mut length = 0;
 
-        for _ in 0..total_sub_blocks {
-            length += self.read_sub_block_with_offset(&mut channels, start_sample)?;
+        for sub_block_idx in 0..total_sub_blocks {
+            if sub_block_idx < sub_blocks_to_skip {
+                // Skip entire sub-block by seeking past it
+                let skip_bytes = channels.block_size() as i64;
+                self.reader.move_position(skip_bytes)?;
+            } else if sub_block_idx == sub_blocks_to_skip {
+                // First sub-block to read - apply remainder skip
+                length += self.read_sub_block_with_offset(&mut channels, remainder_skip)?;
+            } else {
+                // Subsequent sub-blocks - no skip
+                length += self.read_sub_block_with_offset(&mut channels, 0)?;
+            }
         }
 
         Ok(length)
@@ -82,10 +97,44 @@ impl<R: Read + Seek, T: TdmsReader<R>> MultiChannelContigousReader<R, T> {
 
         let total_sub_blocks = self.block_size.get() / channels.block_size() as u64;
 
+        // Calculate per-channel sub-blocks to skip and remainders
+        let sub_block_length = channels.read_instructions()[0].length as u64;
+        let mut sub_blocks_to_skip: Vec<u64> = skip_amounts
+            .iter()
+            .map(|&skip| skip / sub_block_length)
+            .collect();
+        let mut remainder_skips: Vec<u64> = skip_amounts
+            .iter()
+            .map(|&skip| skip % sub_block_length)
+            .collect();
+
         let mut length = 0;
 
-        for _ in 0..total_sub_blocks {
-            length += self.read_sub_block_with_per_channel_skip(&mut channels, skip_amounts)?;
+        for sub_block_idx in 0..total_sub_blocks {
+            // Check if any channel needs to read from this sub-block
+            let any_channel_reads = sub_blocks_to_skip.iter().all(|&skip| sub_block_idx >= skip);
+
+            if !any_channel_reads {
+                // Skip entire sub-block
+                let skip_bytes = channels.block_size() as i64;
+                self.reader.move_position(skip_bytes)?;
+            } else {
+                // Build skip amounts for this sub-block
+                let mut sub_block_skips = Vec::new();
+                for (idx, &blocks_to_skip) in sub_blocks_to_skip.iter().enumerate() {
+                    if sub_block_idx == blocks_to_skip {
+                        // First sub-block to read for this channel - use remainder
+                        sub_block_skips.push(remainder_skips[idx]);
+                    } else if sub_block_idx > blocks_to_skip {
+                        // Subsequent sub-blocks - no skip
+                        sub_block_skips.push(0);
+                    } else {
+                        // Should not happen if any_channel_reads is correct
+                        sub_block_skips.push(0);
+                    }
+                }
+                length += self.read_sub_block_with_per_channel_skip(&mut channels, &sub_block_skips)?;
+            }
         }
 
         Ok(length)
