@@ -280,8 +280,8 @@ impl TdmsMetaData for RawDataIndex {
         let raw_data = match raw_index {
             0x0000_0000 => RawDataIndex::MatchPrevious,
             0xFFFF_FFFF => RawDataIndex::None,
-            0x69120000..=0x6912FFFF => todo!(), // daqmx 1
-            0x69130000..=0x6913FFFF => todo!(), //daqmx 2
+            0x69120000..=0x6912FFFF => return Err(TdmsError::DaqmxChannelsNotSupported), // daqmx 1
+            0x69130000..=0x6913FFFF => return Err(TdmsError::DaqmxChannelsNotSupported), //daqmx 2
             _ => {
                 let data_type: DataType = reader.read_meta()?;
                 let _array_dims: u32 = reader.read_value()?; //always 1.

@@ -67,6 +67,8 @@ pub enum TdmsError {
         "The calculated size for a data chunk is grater than 2^64 bytes. This isn't allowed and probably indicates a corrupt file."
     )]
     ChunkSizeOverflow,
+    #[error("DAQmx Channels are not supported yet")]
+    DaqmxChannelsNotSupported,
     #[cfg(feature = "chrono")]
     #[error("Failed to convert LVTime to chrono::DateTime")]
     ChronoDateTimeConversionFailed(#[source] labview_interop::types::timestamp::LVTimeError),
