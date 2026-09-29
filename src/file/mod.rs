@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 
-use crate::meta_data::Segment;
+use crate::meta_data::{Segment, LEAD_IN_BYTES};
 use crate::{ChannelPath, index::Index};
 use crate::{PropertyPath, PropertyValue, error::TdmsError};
 use crate::{
@@ -53,17 +53,29 @@ impl TdmsFile<File> {
     }
 }
 
+/// The next eight bytes (64-bit unsigned integer) describe the length of the remaining segment (overall length of the segment minus length of the lead in).
+/// If further segments are appended to the file, this number can be used to locate the starting point of the following segment.
+/// If an application encountered a severe problem while writing to a TDMS file (crash, power outage), all bytes of this integer can be 0xFF. This can only happen to the last segment in a file.
+/// https://www.ni.com/en/support/documentation/supplemental/07/tdms-file-format-internal-structure.html
+const CORRUPTED_SEGMENT: u64 = 0xFFFFFFFFFFFFFFFF;
+
 fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
     let mut index = Index::new();
-
+    let file_size = file.seek(SeekFrom::End(0))?;
     //Make sure we are at the beginning.
     file.seek(SeekFrom::Start(0))?;
 
     loop {
+        let segment_start = file.stream_position()?;
         match Segment::read(file) {
-            Ok(segment) => {
+            Ok(mut segment) => {
+                let corrupted = segment.next_segment_offset == CORRUPTED_SEGMENT;
+                if corrupted {
+                    segment.next_segment_offset =
+                        file_size.saturating_sub(segment_start + LEAD_IN_BYTES);
+                }
                 let next_segment = index.add_segment(segment)?;
-                if file.seek(SeekFrom::Start(next_segment)).is_err() {
+                if corrupted || file.seek(SeekFrom::Start(next_segment)).is_err() {
                     break;
                 }
             }

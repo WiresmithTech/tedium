@@ -2,7 +2,8 @@ mod common;
 use labview_interop::types::LVTime;
 use std::{fmt::Debug, io::Read, io::Seek, io::Write};
 use tedium::types::Complex;
-use tedium::{PropertyPath, PropertyValue, TdmsFile};
+use tedium::{ChannelPath, DataLayout, PropertyPath, PropertyValue, TdmsFile};
+use std::io::Cursor;
 
 const TEST_PROPERTIES: &[(&str, PropertyValue)] = &[
     ("i8", PropertyValue::I8(-5)),
@@ -66,4 +67,49 @@ fn test_group_properties() {
 fn test_channel_properties() {
     let file = common::open_test_file();
     test_properties(file, PropertyPath::channel("group", "channel"));
+}
+
+const NEXT_SEGMENT_POS: usize = 12;
+
+fn mark_corrupted(bytes: &mut Vec<u8>, segment_start: usize) {
+    let offset = segment_start + NEXT_SEGMENT_POS;
+    bytes[offset..offset + 8].fill(0xFF);
+}
+
+#[test]
+fn test_corrupted_file() {
+    let mut buffer = Cursor::new(Vec::new());
+    let first_segment = vec![1.0, 2.0, 3.0];
+    let second_segment = vec![4.0, 5.0, 6.0];
+    {
+        let mut file = TdmsFile::new(&mut buffer).unwrap();
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[&ChannelPath::new("group", "channel")],
+                &first_segment[..],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+    }
+    let second_segment_starts = buffer.get_ref().len();
+    {
+        let mut file = TdmsFile::new(&mut buffer).unwrap();
+        let mut writer = file.writer().unwrap();
+        writer
+            .write_channels(
+                &[&ChannelPath::new("group", "channel")],
+                &second_segment[..],
+                DataLayout::Interleaved,
+            )
+            .unwrap();
+    }
+    mark_corrupted(buffer.get_mut(), second_segment_starts);
+    let mut output = vec![0.0; 3];
+    {
+        let mut file = TdmsFile::new(&mut buffer).unwrap();
+        file.read_channel(&ChannelPath::new("group", "channel"), &mut output[..])
+            .unwrap();
+    }
+    assert_eq!(output, vec![1.0, 2.0, 3.0,]);
 }
