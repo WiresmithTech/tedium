@@ -73,7 +73,7 @@ pub enum TdmsError {
     #[error("Failed to convert LVTime to chrono::DateTime")]
     ChronoDateTimeConversionFailed(#[source] labview_interop::types::timestamp::LVTimeError),
     #[error(
-        "The TDMS file has an unfinished segment which usually indicates the program writing the file crashed or incorrectly closed the file. We shall read all segments until this one but some data may be lost."
+        "The TDMS file has an unfinished segment which usually indicates the program writing the file crashed or incorrectly closed the file. We have read all segments before this one but some data may have been lost."
     )]
     FileUnfinished,
 }
