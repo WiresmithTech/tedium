@@ -3,12 +3,6 @@
 mod channel_reader;
 mod file_writer;
 
-use std::{
-    fs::File,
-    io::{Read, Seek, SeekFrom, Write},
-    path::Path,
-};
-
 use crate::meta_data::{LEAD_IN_BYTES, Segment};
 use crate::{ChannelPath, index::Index};
 use crate::{PropertyPath, PropertyValue, error::TdmsError};
@@ -17,6 +11,12 @@ use crate::{
     paths::path_group_name,
 };
 pub use file_writer::TdmsFileWriter;
+use log::log;
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
+};
 
 /// A TDMS file.
 ///
@@ -69,6 +69,9 @@ fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
             Ok(segment) => {
                 let corrupted = segment.next_segment_offset == CORRUPTED_SEGMENT;
                 if corrupted {
+                    log::warn!(
+                        "LabView application encountered a severe problem while writing to a TDMS file (crash, power outage). The last segment will be dismissed."
+                    );
                     break;
                 }
                 let next_segment = index.add_segment(segment)?;
