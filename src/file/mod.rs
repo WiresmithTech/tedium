@@ -3,7 +3,7 @@
 mod channel_reader;
 mod file_writer;
 
-use crate::meta_data::{LEAD_IN_BYTES, Segment};
+use crate::meta_data::Segment;
 use crate::{ChannelPath, index::Index};
 use crate::{PropertyPath, PropertyValue, error::TdmsError};
 use crate::{
@@ -11,12 +11,22 @@ use crate::{
     paths::path_group_name,
 };
 pub use file_writer::TdmsFileWriter;
-use log::log;
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
+#[derive(Default, Debug)]
+pub enum UnfinishedSegmentAction {
+    #[default]
+    Ignore,
+    Error,
+}
+
+#[derive(Debug, Default)]
+pub struct TdmsFileOption {
+    pub unfinished_action: UnfinishedSegmentAction,
+}
 
 /// A TDMS file.
 ///
@@ -36,20 +46,20 @@ pub struct TdmsFile<F: Read + Seek> {
 impl TdmsFile<File> {
     /// Load the file from the path. This step will load and index the metadata
     /// ready for access.
-    pub fn load(path: &Path) -> Result<Self, TdmsError> {
+    pub fn load(path: &Path, option: TdmsFileOption) -> Result<Self, TdmsError> {
         let file = File::options().read(true).write(true).open(path)?;
-        Self::new(file)
+        Self::new(file, option)
     }
 
     /// Create a new file at the path. This will replace any existing file at the path.
-    pub fn create(path: &Path) -> Result<Self, TdmsError> {
+    pub fn create(path: &Path, option: TdmsFileOption) -> Result<Self, TdmsError> {
         let file = File::options()
             .write(true)
             .create(true)
             .truncate(true)
             .read(true)
             .open(path)?;
-        Self::new(file)
+        Self::new(file, option)
     }
 }
 
@@ -57,9 +67,9 @@ impl TdmsFile<File> {
 /// If further segments are appended to the file, this number can be used to locate the starting point of the following segment.
 /// If an application encountered a severe problem while writing to a TDMS file (crash, power outage), all bytes of this integer can be 0xFF. This can only happen to the last segment in a file.
 /// https://www.ni.com/en/support/documentation/supplemental/07/tdms-file-format-internal-structure.html
-const CORRUPTED_SEGMENT: u64 = 0xFFFFFFFFFFFFFFFF;
+const UNFINISHED_SEGMENT: u64 = 0xFFFFFFFFFFFFFFFF;
 
-fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
+fn build_index(file: &mut (impl Read + Seek), option: TdmsFileOption) -> Result<Index, TdmsError> {
     let mut index = Index::new();
     //Make sure we are at the beginning.
     file.seek(SeekFrom::Start(0))?;
@@ -67,12 +77,18 @@ fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
     loop {
         match Segment::read(file) {
             Ok(segment) => {
-                let corrupted = segment.next_segment_offset == CORRUPTED_SEGMENT;
-                if corrupted {
-                    log::warn!(
-                        "LabView application encountered a severe problem while writing to a TDMS file (crash, power outage). The last segment will be dismissed."
-                    );
-                    break;
+                let unfinished = segment.next_segment_offset == UNFINISHED_SEGMENT;
+                if unfinished {
+                    index.mark_unfinished();
+                    match option.unfinished_action {
+                        UnfinishedSegmentAction::Ignore => {
+                            log::warn!(
+                                "LabView application encountered a severe problem while writing to a TDMS file (crash, power outage). The last segment will be dismissed."
+                            );
+                            break;
+                        }
+                        UnfinishedSegmentAction::Error => return Err(TdmsError::FileUnfinished),
+                    }
                 }
                 let next_segment = index.add_segment(segment)?;
                 if file.seek(SeekFrom::Start(next_segment)).is_err() {
@@ -91,13 +107,37 @@ impl<F: Read + Seek> TdmsFile<F> {
     ///
     /// # Example
     /// ```rust
-    /// use tedium::TdmsFile;
+    /// use tedium::{TdmsFile, TdmsFileOption};
     /// let mut fake_file = std::io::Cursor::new(vec![]);
-    /// let file = TdmsFile::new(fake_file);
+    /// let file = TdmsFile::new(fake_file, TdmsFileOption::default());
     /// ```
-    pub fn new(mut file: F) -> Result<Self, TdmsError> {
-        let index = build_index(&mut file)?;
+    pub fn new(mut file: F, option: TdmsFileOption) -> Result<Self, TdmsError> {
+        let index = build_index(&mut file, option)?;
         Ok(Self { index, file })
+    }
+
+    /// Checks if the current index has an unfinished segment. If true return `TdmsError::FileUnfinished`.
+    /// # Example
+    ///
+    /// ```rust
+    /// use tedium::{TdmsFile, TdmsFileOption};
+    /// let mut fake_file = std::io::Cursor::new(vec![]);
+    /// let file = TdmsFile::new(fake_file, TdmsFileOption::default()).unwrap();
+    /// let result = file.has_unfinished_segment();
+    /// match result {
+    ///     Ok(_) => println!("Segment is finished."),
+    ///     Err(err) => println!("Error: {:?}", err),
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `TdmsError::FileUnfinished` if the segment is complete.
+    pub fn has_unfinished_segment(&self) -> Result<(), TdmsError> {
+        match self.index.is_unfinished() {
+            true => Err(TdmsError::FileUnfinished),
+            false => Ok(()),
+        }
     }
 
     /// Read the property by name from the full object path.
@@ -106,10 +146,10 @@ impl<F: Read + Seek> TdmsFile<F> {
     /// # Example
     ///
     /// ```rust
-    /// use tedium::{TdmsFile, PropertyPath};
+    /// use tedium::{TdmsFile, PropertyPath, TdmsFileOption};
     ///
     /// let mut fake_file = std::io::Cursor::new(vec![]);
-    /// let mut file = TdmsFile::new(fake_file).unwrap();
+    /// let mut file = TdmsFile::new(fake_file, TdmsFileOption::default()).unwrap();
     ///
     /// let property = file.read_property(&PropertyPath::file(), "name");
     /// ```
@@ -172,10 +212,10 @@ impl<F: Write + Read + Seek> TdmsFile<F> {
     /// # Example
     ///
     /// ```rust
-    /// use tedium::{TdmsFile, ChannelPath, DataLayout};
+    /// use tedium::{TdmsFile, ChannelPath, DataLayout, TdmsFileOption};
     ///
     /// let mut fake_file = std::io::Cursor::new(vec![]);
-    /// let mut file = TdmsFile::new(fake_file).unwrap();
+    /// let mut file = TdmsFile::new(fake_file, TdmsFileOption::default()).unwrap();
     /// let mut writer = file.writer().unwrap();
     ///
     /// writer.write_channels(
@@ -202,7 +242,6 @@ impl<F: Write + Read + Seek> TdmsFile<F> {
 
 #[cfg(test)]
 mod tests {
-
     use std::io::Cursor;
 
     use crate::DataLayout;
@@ -212,14 +251,14 @@ mod tests {
     fn new_empty_file() -> TdmsFile<Cursor<Vec<u8>>> {
         let buffer = Vec::new();
         let cursor = Cursor::new(buffer);
-        TdmsFile::new(cursor).unwrap()
+        TdmsFile::new(cursor, TdmsFileOption::default()).unwrap()
     }
 
     #[test]
     fn test_can_load_empty_buffer() {
         let buffer = Vec::new();
         let mut cursor = Cursor::new(buffer);
-        let result = build_index(&mut cursor);
+        let result = build_index(&mut cursor, TdmsFileOption::default());
         assert!(result.is_ok());
     }
 

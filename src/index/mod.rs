@@ -119,11 +119,22 @@ pub struct Index {
     objects: ObjectIndex,
     data_blocks: Vec<DataBlock>,
     next_segment_start: u64,
+    unfinished_segment: bool,
 }
 
 impl Index {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Mark that the last segment in the file was unfinished and was not indexed.
+    pub fn mark_unfinished(&mut self) {
+        self.unfinished_segment = true;
+    }
+
+    /// True if the last segment in the file was unfinished and was not indexed.
+    pub fn is_unfinished(&self) -> bool {
+        self.unfinished_segment
     }
 
     /// Get all of the properties for the given object.

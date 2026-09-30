@@ -5,7 +5,8 @@ use tedium::{ChannelPath, DataLayout, TdmsFile};
 fn create_file(elements: usize, channels: usize) -> TdmsFile<Cursor<Vec<u8>>> {
     let buffer = (0..elements).map(|i| i as f64).collect::<Vec<_>>();
 
-    let mut file = TdmsFile::new(Cursor::new(Vec::new())).unwrap();
+    let mut file =
+        TdmsFile::new(Cursor::new(Vec::new()), tedium::TdmsFileOption::default()).unwrap();
     let mut writer = file.writer().unwrap();
 
     let channels = (0..channels)
