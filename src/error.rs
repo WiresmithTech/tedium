@@ -72,4 +72,6 @@ pub enum TdmsError {
     #[cfg(feature = "chrono")]
     #[error("Failed to convert LVTime to chrono::DateTime")]
     ChronoDateTimeConversionFailed(#[source] labview_interop::types::timestamp::LVTimeError),
+    #[error("Application encountered a severe error when writing to the file, file is unfinished")]
+    FileUnfinished,
 }

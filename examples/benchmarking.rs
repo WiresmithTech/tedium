@@ -16,7 +16,7 @@ fn main() {
 
     let data = vec![5i16; WRITE_BLOCK_SIZE];
 
-    let mut file = TdmsFile::create(&temp_path).unwrap();
+    let mut file = TdmsFile::create(&temp_path, tedium::TdmsFileOption::default()).unwrap();
     let mut writer = file.writer().unwrap();
 
     let start = std::time::Instant::now();

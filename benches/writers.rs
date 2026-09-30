@@ -4,7 +4,7 @@ use tedium::{ChannelPath, DataLayout, TdmsFile};
 
 fn setup_file() -> TdmsFile<Cursor<Vec<u8>>> {
     let fake_file = Cursor::new(Vec::with_capacity(32_000_000));
-    let file = TdmsFile::new(fake_file).unwrap();
+    let file = TdmsFile::new(fake_file, tedium::TdmsFileOption::default()).unwrap();
     file
 }
 
