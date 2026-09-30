@@ -3,7 +3,7 @@ use labview_interop::types::LVTime;
 use std::io::Cursor;
 use std::{fmt::Debug, io::Read, io::Seek, io::Write};
 use tedium::types::Complex;
-use tedium::{ChannelPath, DataLayout, PropertyPath, PropertyValue, TdmsError, TdmsFile};
+use tedium::{ChannelPath, DataLayout, PropertyPath, PropertyValue, TdmsFile};
 
 const TEST_PROPERTIES: &[(&str, PropertyValue)] = &[
     ("i8", PropertyValue::I8(-5)),
