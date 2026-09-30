@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 
-use crate::meta_data::{Segment, LEAD_IN_BYTES};
+use crate::meta_data::{LEAD_IN_BYTES, Segment};
 use crate::{ChannelPath, index::Index};
 use crate::{PropertyPath, PropertyValue, error::TdmsError};
 use crate::{
@@ -61,21 +61,18 @@ const CORRUPTED_SEGMENT: u64 = 0xFFFFFFFFFFFFFFFF;
 
 fn build_index(file: &mut (impl Read + Seek)) -> Result<Index, TdmsError> {
     let mut index = Index::new();
-    let file_size = file.seek(SeekFrom::End(0))?;
     //Make sure we are at the beginning.
     file.seek(SeekFrom::Start(0))?;
 
     loop {
-        let segment_start = file.stream_position()?;
         match Segment::read(file) {
-            Ok(mut segment) => {
+            Ok(segment) => {
                 let corrupted = segment.next_segment_offset == CORRUPTED_SEGMENT;
                 if corrupted {
-                    segment.next_segment_offset =
-                        file_size.saturating_sub(segment_start + LEAD_IN_BYTES);
+                    break;
                 }
                 let next_segment = index.add_segment(segment)?;
-                if corrupted || file.seek(SeekFrom::Start(next_segment)).is_err() {
+                if file.seek(SeekFrom::Start(next_segment)).is_err() {
                     break;
                 }
             }
