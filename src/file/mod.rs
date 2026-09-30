@@ -83,7 +83,7 @@ fn build_index(file: &mut (impl Read + Seek), option: TdmsFileOption) -> Result<
                     match option.unfinished_action {
                         UnfinishedSegmentAction::Ignore => {
                             log::warn!(
-                                "LabView application encountered a severe problem while writing to a TDMS file (crash, power outage). The last segment will be dismissed."
+                                "The TDMS file has an unfinished segment which usually indicates the program writing the file crashed or incorrectly closed the file. We shall read all segments until this one but some data may be lost."
                             );
                             break;
                         }
